@@ -1,0 +1,36 @@
+{
+  "program": "Example Authorized RedScope Assessment",
+  "owner": "Example Corp",
+  "authorization": {
+    "authorizedBy": "Jane Doe, Security Director",
+    "reference": "ENG-2026-001",
+    "validFrom": "2026-05-18",
+    "validTo": "2026-06-18",
+    "emergencyContact": "security@example.com"
+  },
+  "testLevels": ["passive", "baseline"],
+  "rateLimits": {
+    "requestsPerSecond": 1,
+    "concurrency": 1
+  },
+  "targets": {
+    "organizations": ["Example Corp"],
+    "domains": ["example.com"],
+    "urls": ["https://www.example.com/"],
+    "ips": ["192.0.2.10"],
+    "cidrs": ["192.0.2.0/24"],
+    "repositories": [],
+    "artifacts": ["tools/artifacts"]
+  },
+  "exclusions": {
+    "domains": ["payments.example.com"],
+    "urls": ["https://www.example.com/logout"],
+    "ips": [],
+    "cidrs": [],
+    "artifacts": []
+  },
+  "notes": [
+    "This is a documentation template. Replace every example value before use.",
+    "Active testing requires adding active to testLevels and defining a run profile."
+  ]
+}

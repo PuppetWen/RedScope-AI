@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "target": "https://www.example.com/",
+  "controlActor": "owner-user",
+  "testActor": "other-user",
+  "objectOwnerActor": "owner-user",
+  "sampleObject": "example-order-id",
+  "actors": [
+    {
+      "id": "owner-user",
+      "role": "customer",
+      "headerEnv": "REDSCOPE_EXAMPLE_OWNER_AUTH",
+      "headerName": "Authorization"
+    },
+    {
+      "id": "other-user",
+      "role": "customer",
+      "headerEnv": "REDSCOPE_EXAMPLE_OTHER_AUTH",
+      "headerName": "Authorization"
+    }
+  ],
+  "authorizationTests": [
+    {
+      "id": "order-detail-horizontal-authorization",
+      "routeId": "get-order-detail",
+      "title": "Other customer cannot read owner order detail",
+      "controlActor": "owner-user",
+      "testActor": "other-user",
+      "objectOwnerActor": "owner-user",
+      "expectedDeniedStatuses": [401, 403, 404]
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+timestamp,user,source_ip,destination_host,event_type,severity,product
+2026-05-18T10:00:00Z,analyst1,192.0.2.10,portal.example.com,login_success,info,example-siem
+2026-05-18T10:02:00Z,analyst2,192.0.2.11,vpn.example.com,login_failed,medium,example-siem
+2026-05-18T10:05:00Z,service-account,192.0.2.12,files.example.com,large_upload,low,example-siem

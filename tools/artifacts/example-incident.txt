@@ -1,0 +1,3 @@
+2026-05-18T10:15:03Z authentication failed for user alice from 192.0.2.10
+2026-05-18T10:16:45Z access denied for admin panel from 198.51.100.23
+2026-05-18T10:19:12Z outbound connection observed to https://updates.example.com/check

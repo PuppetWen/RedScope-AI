@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-19",
+  "policy": {
+    "defaultUpdateIntervalDays": 7,
+    "startupCheck": true,
+    "requireSourcesBeforeWorkflow": true,
+    "promptWhenMissingOrStale": true,
+    "defaultExecution": "disabled",
+    "sourceRoot": "tools/sources",
+    "cacheRoot": "tools/cache/sources",
+    "statePath": "tools/manifests/redscope-source-state.json",
+    "notes": [
+      "This registry stores source repositories and PoC/template collections for authorized RedScope workflows.",
+      "Downloaded source material is reference material only. RedScope workflows must not execute PoC code directly from tools/sources.",
+      "Many public PoC repositories are untrusted and can contain malware, payloads, or destructive samples. Treat every download as quarantined review material.",
+      "All enabled sources use a seven-day update interval unless a source overrides updateIntervalDays.",
+      "Proxy node discovery is intentionally not included. Use only project-authorized egress configuration outside this registry."
+    ]
+  },
+  "sources": [
+    {
+      "id": "nuclei-templates",
+      "name": "ProjectDiscovery Nuclei Templates",
+      "repo": "https://github.com/projectdiscovery/nuclei-templates",
+      "repoSlug": "projectdiscovery/nuclei-templates",
+      "branch": "main",
+      "starsChecked": 12380,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "active",
+      "categories": ["web", "iot", "network", "cve-templates"],
+      "defaultEnabled": true,
+      "requiredForWorkflow": true,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Curated nuclei templates for authorized template matching against explicitly scoped assets.",
+      "safetyNotes": [
+        "Templates are not executed unless a separate authorized profile selects nuclei and confirms active execution.",
+        "Review high-risk templates before enabling active scans."
+      ]
+    },
+    {
+      "id": "trickest-cve",
+      "name": "Trickest CVE PoC Index",
+      "repo": "https://github.com/trickest/cve",
+      "repoSlug": "trickest/cve",
+      "branch": "main",
+      "starsChecked": 7772,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "reference",
+      "categories": ["cve", "poc-index", "web", "server", "iot"],
+      "defaultEnabled": true,
+      "requiredForWorkflow": true,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Reference index for CVE-to-PoC triage and coverage planning.",
+      "safetyNotes": [
+        "Use for lookup and analyst review only.",
+        "Do not execute linked PoCs without a separate written run profile."
+      ]
+    },
+    {
+      "id": "poc-in-github",
+      "name": "PoC-in-GitHub",
+      "repo": "https://github.com/nomi-sec/PoC-in-GitHub",
+      "repoSlug": "nomi-sec/PoC-in-GitHub",
+      "branch": "master",
+      "starsChecked": 7755,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "restricted",
+      "categories": ["cve", "poc-index", "github-mining", "web", "server", "iot"],
+      "defaultEnabled": true,
+      "requiredForWorkflow": true,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Broad GitHub PoC index for defensive coverage research and authorized exploitability triage.",
+      "safetyNotes": [
+        "Upstream explicitly warns that collected repositories can contain malware.",
+        "Keep as quarantined metadata/reference material. Do not execute collected code from this tree."
+      ]
+    },
+    {
+      "id": "vulhub",
+      "name": "Vulhub",
+      "repo": "https://github.com/vulhub/vulhub",
+      "repoSlug": "vulhub/vulhub",
+      "branch": "master",
+      "starsChecked": 20713,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "restricted",
+      "categories": ["web", "server", "middleware", "lab-environments"],
+      "defaultEnabled": true,
+      "requiredForWorkflow": true,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Reference vulnerable-lab environments for reproducing findings in isolated local labs.",
+      "safetyNotes": [
+        "Do not start Docker Compose labs automatically.",
+        "Labs must run only in isolated, analyst-approved environments."
+      ]
+    },
+    {
+      "id": "pocsuite3",
+      "name": "Knownsec Pocsuite3",
+      "repo": "https://github.com/knownsec/pocsuite3",
+      "repoSlug": "knownsec/pocsuite3",
+      "branch": "master",
+      "starsChecked": 3844,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "restricted",
+      "categories": ["web", "server", "iot", "poc-framework"],
+      "defaultEnabled": true,
+      "requiredForWorkflow": true,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Reference PoC framework and plugin ecosystem for authorized validation planning.",
+      "safetyNotes": [
+        "Framework code is reference-only unless a dedicated restricted run profile is written.",
+        "Never auto-run PoC modules from this source."
+      ]
+    },
+    {
+      "id": "metasploit-framework",
+      "name": "Metasploit Framework",
+      "repo": "https://github.com/rapid7/metasploit-framework",
+      "repoSlug": "rapid7/metasploit-framework",
+      "branch": "master",
+      "starsChecked": 38205,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "restricted",
+      "categories": ["web", "server", "iot", "modules", "framework-reference"],
+      "defaultEnabled": false,
+      "requiredForWorkflow": false,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Optional framework/module reference for analyst review in mature authorized environments.",
+      "safetyNotes": [
+        "Large source tree; not required for default RedScope workflows.",
+        "Do not execute modules from tools/sources."
+      ]
+    },
+    {
+      "id": "xray",
+      "name": "Chaitin Xray",
+      "repo": "https://github.com/chaitin/xray",
+      "repoSlug": "chaitin/xray",
+      "branch": "master",
+      "starsChecked": 11558,
+      "checkedAt": "2026-05-19",
+      "riskLevel": "restricted",
+      "categories": ["web", "poc-templates", "scanner-reference"],
+      "defaultEnabled": false,
+      "requiredForWorkflow": false,
+      "updateIntervalDays": 7,
+      "redscopeUse": "Optional web PoC/template reference for analyst review.",
+      "safetyNotes": [
+        "Not required for default RedScope workflows.",
+        "Scanner execution must be added as a separate authorized profile."
+      ]
+    }
+  ]
+}

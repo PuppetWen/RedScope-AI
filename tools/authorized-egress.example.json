@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-20",
+  "policy": {
+    "requireAuthorization": true,
+    "disallowPublicFreeProxies": true,
+    "disallowUnverifiedNodes": true,
+    "autoUseForAuthorizedTesting": false,
+    "maxAutoSwitchesPerStep": 3,
+    "switchOnHttpStatuses": [403, 407, 429, 451],
+    "validateBeforeUse": true,
+    "connectivityCheckTimeoutMs": 3000,
+    "avoidPreviouslyUsedNodesPerTarget": true,
+    "defaultRefreshIntervalDays": 1,
+    "blockedCooldownHours": 24,
+    "statePath": "tools/manifests/redscope-egress-state.json",
+    "notes": [
+      "Use only owned, customer-approved, or rules-of-engagement-approved egress nodes.",
+      "Do not import public free proxy lists, scraped proxies, Tor exits, or anonymous third-party relay pools.",
+      "Review or refresh the approved egress list daily during active engagements.",
+      "Keep credentials in REDSCOPE_* environment variables, never in endpoint URLs."
+    ]
+  },
+  "egressPools": [
+    {
+      "id": "example-authorized-egress",
+      "name": "Example Authorized Red Team Egress",
+      "owner": "Example Corp",
+      "authorization": {
+        "authorizedBy": "Jane Doe, Security Director",
+        "reference": "ENG-2026-EGRESS-001",
+        "validFrom": "2026-05-18",
+        "validTo": "2026-06-18",
+        "emergencyContact": "security@example.com"
+      },
+      "allowedTargets": {
+        "domains": ["example.com"],
+        "urls": ["https://www.example.com/"],
+        "ips": ["192.0.2.10"],
+        "cidrs": ["192.0.2.0/24"]
+      },
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1
+      },
+      "restrictions": {
+        "disallowPublicFreeProxies": true,
+        "disallowUnverifiedNodes": true
+      },
+      "nodes": [
+        {
+          "id": "example-corporate-vpn",
+          "name": "Example Corporate VPN Gateway",
+          "kind": "corporate-egress",
+          "endpoint": "socks5://proxy.example.com:1080",
+          "sourceIp": "203.0.113.10",
+          "provider": "Example Corp Network",
+          "region": "us-east-1",
+          "authEnv": "REDSCOPE_EXAMPLE_EGRESS_AUTH",
+          "ownershipEvidence": "ENG-2026-EGRESS-001",
+          "approvedBy": "Jane Doe, Security Director",
+          "approvalReference": "ENG-2026-EGRESS-001",
+          "enabled": true,
+          "notes": [
+            "Example placeholder only. Replace with a node that is owned or explicitly authorized in the rules of engagement."
+          ]
+        },
+        {
+          "id": "example-cloud-egress-2",
+          "name": "Example Approved Cloud Egress 2",
+          "kind": "cloud-egress",
+          "endpoint": "http://proxy2.example.com:8080",
+          "sourceIp": "203.0.113.11",
+          "provider": "Example Cloud Account",
+          "region": "us-west-2",
+          "authEnv": "REDSCOPE_EXAMPLE_EGRESS_AUTH",
+          "ownershipEvidence": "ENG-2026-EGRESS-001",
+          "approvedBy": "Jane Doe, Security Director",
+          "approvalReference": "ENG-2026-EGRESS-001",
+          "enabled": true,
+          "notes": [
+            "Example alternate node used to demonstrate approved-node switching after a block signal."
+          ]
+        }
+      ],
+      "notes": [
+        "This pool demonstrates the schema. Replace every example value before real use."
+      ]
+    }
+  ]
+}

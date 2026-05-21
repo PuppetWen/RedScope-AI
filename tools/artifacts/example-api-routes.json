@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "target": "https://www.example.com/",
+  "routes": [
+    {
+      "id": "get-order-detail",
+      "method": "GET",
+      "path": "/orders/{orderId}",
+      "title": "Customer order detail",
+      "ownerScoped": true,
+      "category": "idor",
+      "severity": "high",
+      "impact": "A non-owner viewing another customer's order would expose private order data.",
+      "remediation": "Enforce server-side ownership checks on every order detail request."
+    },
+    {
+      "id": "apply-coupon",
+      "method": "POST",
+      "path": "/checkout/coupons",
+      "title": "Apply checkout coupon",
+      "stateChanging": true,
+      "category": "coupon-abuse",
+      "severity": "medium",
+      "expectedOutcome": "Coupons can be applied only when server-side eligibility, expiration, and per-account usage checks pass."
+    },
+    {
+      "id": "upload-support-file",
+      "method": "POST",
+      "path": "/support/tickets/{ticketId}/attachments",
+      "title": "Upload support ticket attachment",
+      "stateChanging": true,
+      "sampleObject": "example-ticket-id",
+      "category": "file-upload",
+      "severity": "high",
+      "expectedOutcome": "Uploads require owner access to the ticket and approved file validation evidence."
+    }
+  ]
+}

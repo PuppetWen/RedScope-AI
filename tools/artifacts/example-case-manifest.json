@@ -1,0 +1,30 @@
+{
+  "caseId": "CASE-EXAMPLE-001",
+  "authorization": {
+    "reference": "ENG-2026-001"
+  },
+  "chainOfCustody": [
+    {
+      "actor": "Example Security",
+      "action": "created local training manifest",
+      "timestamp": "2026-05-18T10:00:00Z"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "example-incident.txt",
+      "type": "log",
+      "sha256": "example-only"
+    },
+    {
+      "path": "example-siem-events.csv",
+      "type": "siem-csv",
+      "sha256": "example-only"
+    },
+    {
+      "path": "example-stix-bundle.json",
+      "type": "stix-bundle",
+      "sha256": "example-only"
+    }
+  ]
+}

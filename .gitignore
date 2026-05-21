@@ -1,0 +1,70 @@
+node_modules
+.DS_Store
+dist
+coverage
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.log
+.idea
+.vscode
+*.suo
+*.lock
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+src/utils/vendor/
+
+# AI tool runtime directories
+.agents/
+.claude/
+.omx/
+.docs/task/
+# Binary / screenshot files (root only)
+/*.png
+*.bmp
+
+# Internal system prompt documents
+Claude-Opus-*.txt
+Claude-Sonnet-*.txt
+Claude-Haiku-*.txt
+
+# Agent / tool state dirs
+.swarm/
+.agents/__pycache__/
+
+# Python bytecode
+__pycache__/
+*.pyc
+logs
+
+data
+.omc
+.redscope/
+.codex/*
+!.codex/agents/
+!.codex/agents/**
+!.codex/skills/
+!.codex/skills/**
+.codex/skills/.system/**
+!.codex/prompts/
+!.codex/prompts/**
+teach-me
+learn/
+credentials.json
+
+# RedScope runtime outputs
+tools/outputs/**
+!tools/outputs/.gitkeep
+tools/cache/**
+!tools/cache/.gitkeep
+tools/memory/**
+!tools/memory/.gitkeep
+tools/manifests/**
+!tools/manifests/.gitkeep

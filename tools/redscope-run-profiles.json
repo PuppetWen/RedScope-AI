@@ -1,0 +1,601 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-18",
+  "policy": {
+    "outputRoot": "tools/outputs",
+    "defaultExecution": "plan-only",
+    "requiresScope": true,
+    "requiresExecuteFlag": true,
+    "requiresActiveConfirmationForLevels": ["active", "restricted"],
+    "notes": [
+      "Profiles are deterministic wrappers, not free-form scanner commands.",
+      "Every profile must validate scope before planning or execution.",
+      "External tools must be installed by scripts/redscope-tool-installer.ts first."
+    ]
+  },
+  "profiles": [
+    {
+      "id": "passive-company-recon",
+      "name": "Passive Company Recon",
+      "riskLevel": "passive",
+      "description": "Prepare a passive reconnaissance evidence workspace for an authorized organization or domain without target probing.",
+      "targetKinds": ["organization", "domain"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.organizations|targets.domains"
+      ],
+      "allowedTools": [],
+      "rateLimits": {
+        "requestsPerSecond": 0,
+        "concurrency": 1,
+        "maxTargets": 10
+      },
+      "outputDirectory": "tools/outputs/passive-company-recon",
+      "stopConditions": [
+        "Stop if the requested organization or domain is not listed in scope.",
+        "Do not directly probe scoped targets.",
+        "Do not enumerate subdomains with active DNS brute force.",
+        "Only collect or prepare passive evidence sources."
+      ],
+      "reportTemplate": "templates/passive-company-recon.md",
+      "steps": [
+        {
+          "id": "scope-summary",
+          "kind": "internal",
+          "description": "Record scoped organization and domain seeds."
+        },
+        {
+          "id": "passive-source-plan",
+          "kind": "internal",
+          "description": "Create a passive source checklist for analyst review."
+        }
+      ]
+    },
+    {
+      "id": "baseline-url-review",
+      "name": "Baseline URL Review",
+      "riskLevel": "baseline",
+      "description": "Perform a low-impact single-URL baseline review for an explicitly scoped URL.",
+      "targetKinds": ["url"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls|targets.domains"
+      ],
+      "allowedTools": ["redscope-internal-http-baseline"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/baseline-url-review",
+      "stopConditions": [
+        "Stop if the target URL is not in scope or is explicitly excluded.",
+        "Stop after one HTTP request unless redirected to the same host.",
+        "Do not crawl, fuzz, brute force, authenticate, or submit forms."
+      ],
+      "reportTemplate": "templates/baseline-url-review.md",
+      "steps": [
+        {
+          "id": "single-url-fetch",
+          "kind": "internal-http-baseline",
+          "description": "Fetch the authorized URL once and record status, final URL, and response headers."
+        }
+      ]
+    },
+    {
+      "id": "repo-secret-and-sast",
+      "name": "Repository Secret and SAST Review",
+      "riskLevel": "baseline",
+      "description": "Run authorized local repository review with pinned project-local tools.",
+      "targetKinds": ["repository"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.repositories"
+      ],
+      "allowedTools": ["gitleaks", "semgrep"],
+      "rateLimits": {
+        "requestsPerSecond": 0,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/repo-secret-and-sast",
+      "stopConditions": [
+        "Stop if the repository path is not listed in scope.",
+        "Do not upload source code or findings to third-party services.",
+        "Run local read-only scans only."
+      ],
+      "reportTemplate": "templates/repo-secret-and-sast.md",
+      "steps": [
+        {
+          "id": "gitleaks-detect",
+          "kind": "tool",
+          "tool": "gitleaks",
+          "description": "Run gitleaks detect with redacted output."
+        },
+        {
+          "id": "semgrep-ci",
+          "kind": "tool",
+          "tool": "semgrep",
+          "description": "Run semgrep in local-only JSON mode."
+        }
+      ]
+    },
+    {
+      "id": "authorized-gitleaks-secret-scan",
+      "name": "Authorized Gitleaks Secret Scan",
+      "riskLevel": "restricted",
+      "description": "Run a separately approved local Gitleaks secret scan for an explicitly scoped repository with per-tool scanner allowlisting.",
+      "targetKinds": ["repository"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.repositories",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.restricted",
+        "scannerExecution.approvedBy",
+        "scannerExecution.approvalReference",
+        "scannerExecution.changeWindow",
+        "scannerExecution.allowedTools"
+      ],
+      "allowedTools": ["gitleaks"],
+      "rateLimits": {
+        "requestsPerSecond": 0,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/authorized-gitleaks-secret-scan",
+      "stopConditions": [
+        "Stop if restricted testing is not explicitly present in scope.testLevels.",
+        "Stop if the repository path is not listed in scope.targets.repositories.",
+        "Run only when gitleaks is listed in scope.scannerExecution.allowedTools.",
+        "Run local read-only secret detection only.",
+        "Use redacted JSON output and do not upload source code or findings to third-party services.",
+        "Keep raw secret values out of reports, memory, and delivery artifacts."
+      ],
+      "reportTemplate": "templates/authorized-gitleaks-secret-scan.md",
+      "steps": [
+        {
+          "id": "gitleaks-detect",
+          "kind": "tool",
+          "tool": "gitleaks",
+          "description": "Run gitleaks detect with redacted local JSON output when approved in scope.scannerExecution.allowedTools."
+        }
+      ]
+    },
+    {
+      "id": "authorized-semgrep-sast",
+      "name": "Authorized Semgrep SAST",
+      "riskLevel": "restricted",
+      "description": "Run a separately approved local Semgrep SAST scan for an explicitly scoped repository with a project-local Semgrep config and per-tool scanner allowlisting.",
+      "targetKinds": ["repository"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.repositories",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.restricted",
+        "scannerExecution.approvedBy",
+        "scannerExecution.approvalReference",
+        "scannerExecution.changeWindow",
+        "scannerExecution.allowedTools"
+      ],
+      "allowedTools": ["semgrep"],
+      "rateLimits": {
+        "requestsPerSecond": 0,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/authorized-semgrep-sast",
+      "stopConditions": [
+        "Stop if restricted testing is not explicitly present in scope.testLevels.",
+        "Stop if the repository path is not listed in scope.targets.repositories.",
+        "Run only when semgrep is listed in scope.scannerExecution.allowedTools.",
+        "Use only a project-local Semgrep config or an explicitly supplied --semgrep-config path.",
+        "Run local read-only static analysis only.",
+        "Do not upload source code, findings, metrics, or rule telemetry to third-party services."
+      ],
+      "reportTemplate": "templates/authorized-semgrep-sast.md",
+      "steps": [
+        {
+          "id": "semgrep-ci",
+          "kind": "tool",
+          "tool": "semgrep",
+          "description": "Run semgrep in local-only JSON mode when approved in scope.scannerExecution.allowedTools."
+        }
+      ]
+    },
+    {
+      "id": "threat-trace-artifact-review",
+      "name": "Threat Trace Artifact Review",
+      "riskLevel": "passive",
+      "description": "Summarize authorized local logs, SIEM exports, STIX bundles, EVTX metadata, archives, IOCs, and incident artifacts without copying raw contents into reports.",
+      "targetKinds": ["artifact"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.artifacts"
+      ],
+      "allowedTools": ["redscope-internal-artifact-summary"],
+      "rateLimits": {
+        "requestsPerSecond": 0,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/threat-trace-artifact-review",
+      "stopConditions": [
+        "Stop if the artifact path is not listed in scope.",
+        "Do not upload logs, IOCs, or artifacts to third-party services.",
+        "Do not copy raw log lines, payloads, secrets, or full artifact contents into reports.",
+        "Only generate local metadata, hashes, capped indicator samples, structured parser summaries, and defensive triage guidance."
+      ],
+      "reportTemplate": "templates/threat-trace-artifact-review.md",
+      "steps": [
+        {
+          "id": "artifact-summary",
+          "kind": "internal-artifact-summary",
+          "description": "Index local artifact metadata, hashes, indicator counts, timestamp bounds, threat-trace keyword counts, and structured parser summaries."
+        },
+        {
+          "id": "defensive-triage-plan",
+          "kind": "internal",
+          "description": "Record defensive triage questions and next-step containment guidance for analyst review."
+        }
+      ]
+    },
+    {
+      "id": "authorized-http-probe",
+      "name": "Authorized HTTP Probe",
+      "riskLevel": "baseline",
+      "description": "Run a bounded httpx probe against explicitly scoped URLs or domains.",
+      "targetKinds": ["url", "domain"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls|targets.domains",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency"
+      ],
+      "allowedTools": ["httpx"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 50
+      },
+      "outputDirectory": "tools/outputs/authorized-http-probe",
+      "stopConditions": [
+        "Stop if any target is not in scope or is explicitly excluded.",
+        "Do not crawl, fuzz, brute force, authenticate, or submit forms.",
+        "Respect the lower of profile and scope rate limits."
+      ],
+      "reportTemplate": "templates/authorized-http-probe.md",
+      "steps": [
+        {
+          "id": "httpx-json-probe",
+          "kind": "tool",
+          "tool": "httpx",
+          "description": "Run httpx with JSON output, bounded concurrency, and low rate."
+        }
+      ]
+    },
+    {
+      "id": "authorized-nuclei-low",
+      "name": "Authorized Nuclei Low-Impact Scan",
+      "riskLevel": "active",
+      "description": "Run a low-impact nuclei profile for explicitly authorized targets and templates.",
+      "targetKinds": ["url", "domain"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls|targets.domains",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.active"
+      ],
+      "allowedTools": ["nuclei"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 25
+      },
+      "outputDirectory": "tools/outputs/authorized-nuclei-low",
+      "stopConditions": [
+        "Stop if active testing is not explicitly present in scope.testLevels.",
+        "Stop if any target is not in scope or is explicitly excluded.",
+        "Use low/info severity templates only.",
+        "Do not run exploit, fuzzing, brute-force, credential, file-upload, or destructive templates."
+      ],
+      "reportTemplate": "templates/authorized-nuclei-low.md",
+      "steps": [
+        {
+          "id": "nuclei-low-jsonl",
+          "kind": "tool",
+          "tool": "nuclei",
+          "description": "Run nuclei with low/info severity, JSONL output, and strict rate limits."
+        }
+      ]
+    },
+    {
+      "id": "authorized-third-party-scanner-baseline",
+      "name": "Authorized Third-Party Scanner Baseline",
+      "riskLevel": "restricted",
+      "description": "Run separately approved low-impact third-party scanner steps against explicitly scoped targets with written scanner approval and per-tool allowlisting.",
+      "targetKinds": ["url", "domain"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls|targets.domains",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.restricted",
+        "scannerExecution.approvedBy",
+        "scannerExecution.approvalReference",
+        "scannerExecution.changeWindow",
+        "scannerExecution.allowedTools"
+      ],
+      "allowedTools": ["httpx", "nuclei"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 10
+      },
+      "outputDirectory": "tools/outputs/authorized-third-party-scanner-baseline",
+      "stopConditions": [
+        "Stop if restricted testing is not explicitly present in scope.testLevels.",
+        "Stop if any target is not in scope or is explicitly excluded.",
+        "Run only tools listed in scope.scannerExecution.allowedTools.",
+        "Use httpx only for low-rate HTTP metadata probing.",
+        "Use nuclei only with low/info severity templates.",
+        "Do not run exploit, fuzzing, brute-force, credential, file-upload, destructive, or state-changing scanner checks.",
+        "Do not crawl beyond the supplied target list or submit forms.",
+        "Respect the lower of profile and scope rate limits.",
+        "Keep scanner outputs local and normalize findings before delivery."
+      ],
+      "reportTemplate": "templates/authorized-third-party-scanner-baseline.md",
+      "steps": [
+        {
+          "id": "httpx-json-probe",
+          "kind": "tool",
+          "tool": "httpx",
+          "description": "Run httpx with JSON output, bounded concurrency, and low rate when approved in scope.scannerExecution.allowedTools."
+        },
+        {
+          "id": "nuclei-low-jsonl",
+          "kind": "tool",
+          "tool": "nuclei",
+          "description": "Run nuclei with low/info severity, JSONL output, and strict rate limits when approved in scope.scannerExecution.allowedTools."
+        }
+      ]
+    },
+    {
+      "id": "authorized-low-impact-validator",
+      "name": "Authorized Low-Impact Validator",
+      "riskLevel": "active",
+      "description": "Run separately approved same-origin GET/HEAD validators that can promote only proven scoped impact to target-verified issues without executing public PoC code.",
+      "targetKinds": ["url"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.active",
+        "validation.approvedBy",
+        "validation.approvalReference",
+        "validation.validators"
+      ],
+      "allowedTools": ["redscope-internal-low-impact-validator"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/authorized-low-impact-validator",
+      "stopConditions": [
+        "Stop if active testing is not explicitly present in scope.testLevels.",
+        "Stop if the target URL is not in scope or is explicitly excluded.",
+        "Run only validators declared in scope.validation.validators with separate approval metadata.",
+        "Each validator may make at most one same-origin GET or HEAD request with no request body.",
+        "Do not execute arbitrary PoC code, exploit payloads, fuzzing, brute-force, credential, upload, or destructive checks.",
+        "Do not follow cross-origin redirects or validate paths outside the scoped target URL.",
+        "Store response metadata, header digests, body sample hashes, and assertion outcomes only; do not store raw response body text.",
+        "Promote to target-verified-issue only when the approved low-impact assertion passes against the scoped target."
+      ],
+      "reportTemplate": "templates/authorized-low-impact-validator.md",
+      "steps": [
+        {
+          "id": "approved-low-impact-validator",
+          "kind": "internal-low-impact-validator",
+          "description": "Execute scope-declared low-impact GET/HEAD validators and write target-verified evidence only for passing assertions."
+        }
+      ]
+    },
+    {
+      "id": "authorized-business-logic-validation",
+      "name": "Authorized Business Logic Validation",
+      "riskLevel": "active",
+      "description": "Validate separately approved business-logic test cases for authorization, IDOR, payment/refund/coupon, workflow-state, upload, and SQL injection evidence while keeping intrusive actions evidence-only by default.",
+      "targetKinds": ["url"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.active",
+        "logicValidation.approvedBy",
+        "logicValidation.approvalReference",
+        "logicValidation.testCases"
+      ],
+      "allowedTools": ["redscope-internal-business-logic-validator"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/authorized-business-logic-validation",
+      "stopConditions": [
+        "Stop if active testing is not explicitly present in scope.testLevels.",
+        "Stop if the target URL is not in scope or is explicitly excluded.",
+        "Run only business-logic test cases declared in scope.logicValidation.testCases with separate approval metadata.",
+        "safe-readonly-http cases may use only same-origin GET or HEAD requests, no request body, manual redirects, and declared actor sessions supplied from environment variables or same-origin login bootstrap.",
+        "Do not store raw response bodies, cookies, bearer tokens, or actor session header values.",
+        "Do not execute arbitrary PoC code, fuzzing, brute-force, credential stuffing, payment capture, destructive upload, or raw SQL injection payloads by default.",
+        "Payment, refund, coupon, workflow-state, upload, and SQL injection checks must remain evidence-only unless a future profile adds a separately reviewed runner.",
+        "Parallel lanes are planning metadata only; analyst/subagent execution must keep stateful tests serial and confirm no shared target state.",
+        "Promote to target-verified-issue only when safe read-only actor checks prove impact or approved evidence-only records include observedImpact=true and evidence references."
+      ],
+      "reportTemplate": "templates/authorized-business-logic-validation.md",
+      "steps": [
+        {
+          "id": "approved-business-logic-validator",
+          "kind": "internal-business-logic-validator",
+          "description": "Evaluate scope-declared business-logic test cases, produce parallel review lanes, and write target-verified findings only for proven target impact."
+        }
+      ]
+    },
+    {
+      "id": "authorized-stateful-business-logic-validation",
+      "name": "Authorized Stateful Business Logic Validation",
+      "riskLevel": "active",
+      "description": "Run separately reviewed same-origin state-changing business-logic HTTP test cases for payment/refund/coupon/workflow-state, upload, SQL-injection evidence, and related workflows only when the scope explicitly approves the change window and rollback plan.",
+      "targetKinds": ["url"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.active",
+        "logicValidation.stateChangingApproval.approvedBy",
+        "logicValidation.stateChangingApproval.approvalReference",
+        "logicValidation.stateChangingApproval.changeWindow",
+        "logicValidation.stateChangingApproval.rollbackPlan",
+        "logicValidation.testCases"
+      ],
+      "allowedTools": ["redscope-internal-stateful-business-logic-validator"],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/authorized-stateful-business-logic-validation",
+      "stopConditions": [
+        "Stop if active testing is not explicitly present in scope.testLevels.",
+        "Stop if the target URL is not in scope or is explicitly excluded.",
+        "Run only test cases with validationMode approved-state-changing-http.",
+        "Each executed test case may send one fixed same-origin POST, PUT, PATCH, or DELETE request with a reviewed scope body or requestBodyEnv value.",
+        "Honor logicValidation.stateChangingApproval.maxMutatingRequests, defaulting to one mutating request per run.",
+        "Do not execute arbitrary PoC code, generated fuzz payloads, brute force, credential stuffing, payment capture, destructive upload, or scanner templates.",
+        "Do not store raw request bodies, raw response bodies, cookies, bearer tokens, or actor session header values.",
+        "Require an approved change window and rollback plan before any mutating request.",
+        "Promote to target-verified-issue only when the mutating request succeeds, observedImpact=true, and approved evidence references are present."
+      ],
+      "reportTemplate": "templates/authorized-stateful-business-logic-validation.md",
+      "steps": [
+        {
+          "id": "approved-stateful-business-logic-validator",
+          "kind": "internal-stateful-business-logic-validator",
+          "description": "Execute scope-declared fixed state-changing HTTP business-logic test cases and write target-verified findings only after observed target impact is evidenced."
+        }
+      ]
+    },
+    {
+      "id": "authorized-poc-candidate-validation",
+      "name": "Authorized PoC Candidate Validation",
+      "riskLevel": "active",
+      "description": "Fingerprint an explicitly scoped target with header/body/cookie signatures, map product/vendor/CPE hints, merge owner-confirmed version evidence, score historical vulnerability evidence against local and external PoC/template sources plus authoritative advisory metadata, and produce non-exploit validation gates with screenshot evidence slots.",
+      "targetKinds": ["url", "domain"],
+      "requiredAuthorizationFields": [
+        "owner",
+        "authorization.authorizedBy",
+        "authorization.validFrom",
+        "authorization.validTo",
+        "authorization.emergencyContact",
+        "targets.urls|targets.domains",
+        "rateLimits.requestsPerSecond",
+        "rateLimits.concurrency",
+        "testLevels.active"
+      ],
+      "allowedTools": [
+        "redscope-internal-http-baseline",
+        "redscope-internal-poc-candidate-validation"
+      ],
+      "rateLimits": {
+        "requestsPerSecond": 1,
+        "concurrency": 1,
+        "maxTargets": 1
+      },
+      "outputDirectory": "tools/outputs/authorized-poc-candidate-validation",
+      "stopConditions": [
+        "Stop if active testing is not explicitly present in scope.testLevels.",
+        "Stop if the target is not in scope or is explicitly excluded.",
+        "Do not execute arbitrary PoC code from tools/sources.",
+        "Only match fingerprints, same-context versions, and historical vulnerability identifiers to candidate PoC/template files.",
+        "Use scope.technologyEvidence when available to separate owner-confirmed target versions from public-intelligence leads.",
+        "Treat reviewed template status as an allowlist decision, not as blanket trust for an entire repository.",
+        "External PoC search may query GitHub and public search engines with fingerprint terms only; do not include target hostnames in search queries.",
+        "External search results are metadata links only; do not download or execute PoC code from search results.",
+        "Vulnerability advisory enrichment may query NVD with CPE/CVE/product/version fingerprint terms only; do not treat public advisory metadata as proof of exploitability.",
+        "Automatic validation gates check evidence correlation only; do not run exploit payloads or arbitrary PoC code.",
+        "Keep public-intelligence leads, target fingerprint correlations, owner-confirmed target versions, and target-verified issues as separate evidence classes.",
+        "Keep weak product-only hits as triage-only leads instead of validation attempts.",
+        "Any follow-up validation must use a separately reviewed low-impact profile or manual analyst approval.",
+        "Screenshots must avoid secrets, private data, tokens, and unrelated user information."
+      ],
+      "reportTemplate": "templates/authorized-poc-candidate-validation.md",
+      "steps": [
+        {
+          "id": "validation-fingerprint-baseline",
+          "kind": "internal-http-baseline",
+          "description": "Fetch the authorized URL once and record status plus selected fingerprint headers and bounded derived body/cookie signatures."
+        },
+        {
+          "id": "poc-candidate-match",
+          "kind": "internal-poc-candidate-validation",
+          "description": "Match target fingerprint, vendor/CPE hints, owner-confirmed version evidence, CVE, reviewed-template status, external search evidence, and authoritative advisory metadata against local and public candidate sources, then generate non-exploit evidence gates and a gated validation-attempt plan."
+        }
+      ]
+    }
+  ]
+}

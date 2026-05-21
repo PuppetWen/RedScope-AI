@@ -1,0 +1,42 @@
+{
+  "name": "@redscope-ai/mcp-chrome-bridge",
+  "version": "1.0.0",
+  "description": "RedScope-scoped Chrome MCP bridge package",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redscope-ai/redscope-ai.git",
+    "directory": "packages/mcp-chrome-bridge"
+  },
+  "homepage": "https://github.com/redscope-ai/redscope-ai/tree/main/packages/mcp-chrome-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/redscope-ai/redscope-ai/issues"
+  },
+  "keywords": [
+    "redscope",
+    "mcp",
+    "chrome",
+    "browser-automation"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "bin": {
+    "mcp-chrome-bridge": "dist/cli.js",
+    "mcp-chrome-stdio": "dist/mcp/mcp-server-stdio.js"
+  },
+  "exports": {
+    "./dist/cli.js": "./dist/cli.js",
+    "./dist/mcp/mcp-server-stdio.js": "./dist/mcp/mcp-server-stdio.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.13",
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "commander": "^13.1.0",
+    "hono": "^4.12.12",
+    "is-admin": "^4.0.0"
+  }
+}

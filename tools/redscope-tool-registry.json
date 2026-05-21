@@ -1,0 +1,133 @@
+{
+  "generatedAt": "2026-05-18",
+  "policy": {
+    "downloadDirectory": "tools",
+    "installer": "scripts/redscope-tool-installer.ts",
+    "manifestDirectory": "tools/manifests",
+    "defaultExecution": "disabled",
+    "requiresScopeForLevels": ["baseline", "active", "restricted"],
+    "notes": [
+      "This registry seeds RedScope tool selection. It does not install or run tools.",
+      "External tools must be downloaded into tools/bin or tools/cache with checksum records."
+    ]
+  },
+  "references": [
+    {
+      "id": "pentagi",
+      "name": "PentAGI",
+      "repo": "https://github.com/vxcontrol/pentagi",
+      "starsChecked": 16979,
+      "riskLevel": "reference",
+      "category": "ai-agent-framework",
+      "redscopeUse": "Reference for multi-agent security architecture, supervision, sandboxing, reporting, and observability."
+    },
+    {
+      "id": "strix",
+      "name": "Strix",
+      "repo": "https://github.com/usestrix/strix",
+      "starsChecked": 25357,
+      "riskLevel": "reference",
+      "category": "ai-security-agent",
+      "redscopeUse": "Reference for AI-assisted vulnerability discovery and remediation workflow design."
+    },
+    {
+      "id": "pentestgpt",
+      "name": "PentestGPT",
+      "repo": "https://github.com/GreyDGL/PentestGPT",
+      "starsChecked": 13151,
+      "riskLevel": "reference",
+      "category": "ai-pentest-workflow",
+      "redscopeUse": "Reference for LLM-guided pentest task decomposition."
+    }
+  ],
+  "tools": [
+    {
+      "id": "nuclei",
+      "name": "Nuclei",
+      "repo": "https://github.com/projectdiscovery/nuclei",
+      "starsChecked": 28714,
+      "riskLevel": "active",
+      "category": "vulnerability-scanner",
+      "defaultEnabled": false,
+      "requires": ["authorized-scope", "rate-limit", "template-profile"],
+      "redscopeUse": "Future authorized vulnerability template scanning."
+    },
+    {
+      "id": "gitleaks",
+      "name": "Gitleaks",
+      "repo": "https://github.com/gitleaks/gitleaks",
+      "starsChecked": 27071,
+      "riskLevel": "baseline",
+      "category": "secret-scanning",
+      "defaultEnabled": false,
+      "requires": ["repository-scope"],
+      "redscopeUse": "Future authorized repository secret scanning."
+    },
+    {
+      "id": "katana",
+      "name": "Katana",
+      "repo": "https://github.com/projectdiscovery/katana",
+      "starsChecked": 16710,
+      "riskLevel": "active",
+      "category": "crawler",
+      "defaultEnabled": false,
+      "requires": ["authorized-scope", "crawl-boundary", "rate-limit"],
+      "redscopeUse": "Future scoped crawling of explicitly authorized web assets."
+    },
+    {
+      "id": "ffuf",
+      "name": "ffuf",
+      "repo": "https://github.com/ffuf/ffuf",
+      "starsChecked": 16063,
+      "riskLevel": "restricted",
+      "category": "fuzzer",
+      "defaultEnabled": false,
+      "requires": ["authorized-scope", "wordlist-approval", "rate-limit", "run-window"],
+      "redscopeUse": "Future fuzzing only with explicit written run profile."
+    },
+    {
+      "id": "semgrep",
+      "name": "Semgrep",
+      "repo": "https://github.com/semgrep/semgrep",
+      "starsChecked": 15174,
+      "riskLevel": "baseline",
+      "category": "static-analysis",
+      "defaultEnabled": false,
+      "requires": ["repository-scope"],
+      "redscopeUse": "Future source code static analysis for authorized repositories."
+    },
+    {
+      "id": "zaproxy",
+      "name": "ZAP",
+      "repo": "https://github.com/zaproxy/zaproxy",
+      "starsChecked": 15142,
+      "riskLevel": "active",
+      "category": "dast",
+      "defaultEnabled": false,
+      "requires": ["authorized-scope", "run-window", "rate-limit"],
+      "redscopeUse": "Future authorized baseline DAST profile."
+    },
+    {
+      "id": "amass",
+      "name": "OWASP Amass",
+      "repo": "https://github.com/owasp-amass/amass",
+      "starsChecked": 14571,
+      "riskLevel": "active",
+      "category": "attack-surface-mapping",
+      "defaultEnabled": false,
+      "requires": ["authorized-scope", "passive-mode-preferred"],
+      "redscopeUse": "Future authorized attack surface mapping."
+    },
+    {
+      "id": "httpx",
+      "name": "httpx",
+      "repo": "https://github.com/projectdiscovery/httpx",
+      "starsChecked": 9944,
+      "riskLevel": "baseline",
+      "category": "http-probing",
+      "defaultEnabled": false,
+      "requires": ["authorized-scope", "rate-limit"],
+      "redscopeUse": "Future low-impact HTTP probing for approved host lists."
+    }
+  ]
+}

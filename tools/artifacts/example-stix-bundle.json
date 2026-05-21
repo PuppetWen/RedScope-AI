@@ -1,0 +1,36 @@
+{
+  "type": "bundle",
+  "id": "bundle--11111111-1111-4111-8111-111111111111",
+  "objects": [
+    {
+      "type": "indicator",
+      "spec_version": "2.1",
+      "id": "indicator--22222222-2222-4222-8222-222222222222",
+      "created": "2026-05-18T10:00:00Z",
+      "modified": "2026-05-18T10:00:00Z",
+      "name": "Example training indicator",
+      "pattern": "[domain-name:value = 'example-malware.test']",
+      "pattern_type": "stix",
+      "valid_from": "2026-05-18T10:00:00Z"
+    },
+    {
+      "type": "malware",
+      "spec_version": "2.1",
+      "id": "malware--33333333-3333-4333-8333-333333333333",
+      "created": "2026-05-18T10:00:00Z",
+      "modified": "2026-05-18T10:00:00Z",
+      "name": "Example training malware family",
+      "is_family": true
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--44444444-4444-4444-8444-444444444444",
+      "created": "2026-05-18T10:00:00Z",
+      "modified": "2026-05-18T10:00:00Z",
+      "relationship_type": "indicates",
+      "source_ref": "indicator--22222222-2222-4222-8222-222222222222",
+      "target_ref": "malware--33333333-3333-4333-8333-333333333333"
+    }
+  ]
+}

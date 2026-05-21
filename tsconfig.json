@@ -1,0 +1,29 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "jsx": "react-jsx",
+        "strict": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "types": ["bun"],
+        "paths": {
+            "src/*": ["./src/*"],
+            "@redscope-ai/builtin-tools/*": ["./packages/builtin-tools/src/*"],
+            "@redscope-ai/builtin-tools": ["./packages/builtin-tools/src/index.ts"],
+            "@redscope-ai/mcp-client/*": ["./packages/mcp-client/src/*"],
+            "@redscope-ai/mcp-client": ["./packages/mcp-client/src/index.ts"],
+            "@redscope-ai/agent-tools/*": ["./packages/agent-tools/src/*"],
+            "@redscope-ai/agent-tools": ["./packages/agent-tools/src/index.ts"],
+            "@redscope-ai/weixin/*": ["./packages/weixin/src/*"],
+            "@redscope-ai/weixin": ["./packages/weixin/src/index.ts"]
+        }
+    },
+    "include": ["src/**/*.ts", "src/**/*.tsx", "packages/**/*.ts", "packages/**/*.tsx"],
+    "exclude": ["node_modules"]
+}

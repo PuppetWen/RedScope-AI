@@ -1,0 +1,245 @@
+---
+title: "子 Agent 机制 - AgentTool 的执行链路与隔离架构"
+description: "从源码角度解析 RedScope AI 子 Agent：AgentTool.call() 的完整执行链路、Fork 子进程的 Prompt Cache 共享、Worktree 隔离、工具池独立组装、以及结果回传的数据格式。"
+keywords: ["子 Agent", "AgentTool", "任务委派", "forkSubagent", "子进程隔离"]
+---
+
+{/* 本章目标：从源码角度揭示子 Agent 的完整执行链路、工具隔离、通信协议和生命周期管理 */}
+
+## 执行链路总览
+
+一条 `Agent(prompt="修复 bug")` 调用的完整路径：
+
+```
+AI 生成 tool_use: { prompt: "修复 bug", subagent_type: "Explore" }
+  ↓
+AgentTool.call()                              ← 入口（AgentTool.tsx:387）
+  ├── 解析 effectiveType（fork vs 命名 agent vs GP 回退）
+  ├── filterDeniedAgents()                    ← 仅命名 Agent 路径执行：权限过滤
+  ├── 检查 requiredMcpServers                 ← MCP 依赖验证（最长等 30s）
+  ├── assembleToolPool(workerPermissionContext) ← 独立组装工具池
+  ├── createAgentWorktree()                   ← 可选 worktree 隔离
+  ↓
+runAgent()                                    ← 核心执行（runAgent.ts）
+  ├── getAgentSystemPrompt()                  ← 构建 agent 专属 system prompt
+  ├── initializeAgentMcpServers()             ← agent 级 MCP 服务器
+  ├── executeSubagentStartHooks()             ← Hook 注入
+  ├── query()                                 ← 进入标准 agentic loop
+  │   ├── 消息流逐条 yield
+  │   └── recordSidechainTranscript()         ← JSONL 持久化（~/.claude/projects/{project}/{session}/subagents/）
+  ↓
+finalizeAgentTool()                           ← 结果汇总
+  ├── 提取文本内容 + usage 统计
+  └── mapToolResultToToolResultBlockParam()   ← 格式化为 tool_result
+```
+
+## 子 Agent 的三种路径
+
+`AgentTool.call()` 根据 `subagent_type` 参数和 Fork 实验开关，走三条不同的路径：
+
+| 维度 | 命名 Agent（`subagent_type` 指定） | Fork 子进程（Fork 启用 + 类型省略） | General-purpose 回退（Fork 关闭 + 类型省略） |
+|------|-------------------------------------|--------------------------------------|---------------------------------------------|
+| **触发条件** | `subagent_type` 有值 | `isForkSubagentEnabled() === true` 且未指定类型 | `isForkSubagentEnabled() === false` 且未指定类型 |
+| **System Prompt** | Agent 自身的 `getSystemPrompt()` | 继承父 Agent 的完整 System Prompt | General-purpose Agent 的 `getSystemPrompt()` |
+| **工具池** | `assembleToolPool()` 独立组装 | 父 Agent 的原始工具池（`useExactTools: true`） | `assembleToolPool()` 独立组装 |
+| **上下文** | 仅任务描述 | 父 Agent 的完整对话历史（`forkContextMessages`） | 仅任务描述 |
+| **模型** | 可独立指定 | 继承父模型（`model: 'inherit'`） | 可独立指定 |
+| **权限模式** | Agent 定义的 `permissionMode` | `'bubble'`（上浮到父终端） | Agent 定义的 `permissionMode` |
+| **目的** | 专业任务委派 | Prompt Cache 命中率优化 | 通用任务处理 |
+
+<Note>
+Fork 实验的门控函数 `isForkSubagentEnabled()` 需要同时满足三个前提：`FORK_SUBAGENT` feature flag 已启用、当前不在 Coordinator 模式中、且不是非交互式会话。任一条件不满足时，省略 `subagent_type` 会静默降级为 General-purpose Agent，而非触发 Fork。
+</Note>
+
+Fork 路径的设计核心是 **Prompt Cache 共享**：所有 fork 子进程共享父 Agent 的完整 `assistant` 消息（所有 `tool_use` 块），用相同的占位符 `tool_result` 填充，只有最后一个 `text` 块包含各自的指令。这使得 API 请求前缀字节完全一致，最大化缓存命中。
+
+```typescript
+// forkSubagent.ts:93 — 所有 fork 子进程的占位结果
+const FORK_PLACEHOLDER_RESULT = 'Fork started — processing in background'
+
+// buildForkedMessages() 构建：
+// [assistant(全量 tool_use), user(placeholder_results..., 子进程指令)]
+```
+
+### Fork 递归防护
+
+Fork 子进程保留 Agent 工具（为了 cache-identical tool defs），但通过两道防线防止递归 fork：
+
+1. **`querySource` 检查**（压缩安全）：`context.options.querySource === 'agent:builtin:fork'`
+2. **消息扫描**（降级兜底）：检测 `<fork-boilerplate>` 标签
+
+### 模型解析优先级
+
+子 Agent 的模型选择遵循严格的优先级链（`src/utils/model/agent.ts`）：
+
+```
+1. CLAUDE_CODE_SUBAGENT_MODEL 环境变量     ← 全局覆盖
+   ↓（未设置时）
+2. 每次调用的 model 参数                   ← AgentTool 入参
+   ↓（未指定时）
+3. Agent 定义的 model frontmatter          ← 如 "sonnet", "haiku", "inherit"
+   ↓（未定义时）
+4. 继承父对话模型（conversation model）     ← getDefaultSubagentModel() 返回 "inherit"
+```
+
+其中 `inherit` 不是简单的模型传递——它经过 `getRuntimeMainLoopModel()` 解析，确保 plan mode 下的 `opusplan→Opus` 等运行时映射正确生效。当 Agent 指定的模型族（如 `haiku`）与父模型同族时，直接复用父模型的精确 ID，避免跨 provider 降级。
+
+## 命名 Agent 的工具池独立组装
+
+### 内置 Agent
+
+系统预定义了几个内置 Agent（`packages/builtin-tools/src/tools/AgentTool/builtInAgents.ts`），各有明确的职责和模型配置：
+
+| Agent | 模型 | 权限 | 用途 |
+|-------|------|------|------|
+| **Explore** | Haiku（轻量快速） | 只读（Read/Grep/Glob） | 代码库搜索与探索 |
+| **Plan** | 继承父模型 | 只读 | 为 Plan Mode 收集研究信息 |
+| **General-purpose** | 继承父模型 | 全部工具 | 复杂的通用任务处理 |
+| **statusline-setup** | 继承父模型 | 受限 | 配置状态栏设置 |
+| **claude-code-guide** | 继承父模型 | 受限 | 解答 RedScope AI 使用问题 |
+
+用户还可通过 `.claude/agents/` 目录或 settings 定义自定义 Agent，作用域优先级为：managed settings > CLI `--agents` > 项目级 `.claude/agents/` > 用户级 `~/.claude/agents/` > plugin。
+
+命名 Agent（包括 General-purpose 回退）不继承父 Agent 的工具限制——它的工具池完全独立组装。Fork 子进程则通过 `useExactTools: true` 直接继承父 Agent 的原始工具池，以保持 Prompt Cache 中工具定义的字节一致性。
+
+命名 Agent 的工具池组装逻辑：
+
+```typescript
+const workerPermissionContext = {
+  ...appState.toolPermissionContext,
+  mode: selectedAgent.permissionMode ?? 'acceptEdits'
+}
+const workerTools = assembleToolPool(workerPermissionContext, appState.mcp.tools)
+```
+
+关键设计决策：
+- **权限模式独立**：子 Agent 使用 `selectedAgent.permissionMode`（默认 `acceptEdits`），不受父 Agent 当前模式的限制
+- **MCP 工具继承**：`appState.mcp.tools` 包含所有已连接的 MCP 工具，子 Agent 自动获得
+- **Agent 级 MCP 服务器**：`runAgent()` 中的 `initializeAgentMcpServers()` 可以为特定 Agent 额外连接专属 MCP 服务器
+
+### 工具过滤的 resolveAgentTools
+
+`runAgent.ts:508` 在工具组装后进一步过滤：
+
+```typescript
+const resolvedTools = useExactTools
+  ? availableTools                           // Fork: 直接使用父工具
+  : resolveAgentTools(agentDefinition, availableTools, isAsync).resolvedTools
+```
+
+`resolveAgentTools()` 会根据 Agent 定义中的 `tools` 字段过滤可用工具，将 `['*']` 映射为全量工具。
+
+### Hook 事件
+
+子 Agent 支持 Agent 定义 frontmatter 和全局 settings.json 两种级别的 Hook：
+
+| 来源 | 事件 | 说明 |
+|------|------|------|
+| Agent frontmatter `hooks` | `PreToolUse` / `PostToolUse` | 工具调用前后拦截 |
+| Agent frontmatter `hooks` | `Stop` | 自动转换为 `SubagentStop`（`registerFrontmatterHooks` 传入 `isAgent=true`） |
+| settings.json | `SubagentStart` | 子 Agent 启动时触发（`executeSubagentStartHooks()`） |
+| settings.json | `SubagentStop` | 子 Agent 停止时触发 |
+
+## Worktree 隔离机制
+
+`isolation: "worktree"` 参数让子 Agent 在独立的 git worktree 中工作（`AgentTool.tsx:863`）：
+
+```typescript
+const slug = `agent-${earlyAgentId.slice(0, 8)}`
+worktreeInfo = await createAgentWorktree(slug)
+```
+
+Worktree 生命周期：
+1. **创建**：在 `.git/worktrees/` 下创建独立工作副本
+2. **CWD 覆盖**：`runWithCwdOverride(worktreePath, fn)` 让所有文件操作在 worktree 中执行
+3. **路径翻译**：Fork + worktree 时注入路径翻译通知（`buildWorktreeNotice`）
+4. **清理**（`cleanupWorktreeIfNeeded`）：
+   - Hook-based worktree → 始终保留
+   - 有变更 → 保留，返回 `worktreePath`
+   - 无变更 → 自动删除
+
+## 生命周期管理：同步 vs 异步
+
+### 异步 Agent（后台运行）
+
+当 `run_in_background=true`、`selectedAgent.background=true`、或系统判定应强制异步（如 `assistantForceAsync`、`proactiveModule` 激活）时，Agent 立即返回 `async_launched` 状态：
+
+```
+registerAsyncAgent(agentId, ...)      ← 注册到 AppState.tasks
+  ↓ (void — 火后不管)
+runAsyncAgentLifecycle()              ← 后台执行（agentToolUtils.ts）
+  ├── runAgent().onCacheSafeParams    ← 进度摘要初始化
+  ├── 消息流迭代
+  ├── finalizeAgentTool()             ← 结果汇总（提取文本 + usage 统计）
+  ├── completeAsyncAgent()            ← 标记完成（先于通知，确保 TaskOutput 尽快解除阻塞）
+  ├── classifyHandoffIfNeeded()       ← 安全分类（需 TRANSCRIPT_CLASSIFIER feature）
+  ├── getWorktreeResult()             ← Worktree 清理（如有隔离）
+  └── enqueueAgentNotification()      ← 通知主 Agent
+```
+
+如果异步 Agent 提供了 `name` 参数，还会注册到 `agentNameRegistry`，支撑 `SendMessage` 工具通过名称路由到该 Agent。
+
+异步 Agent 获得独立的 `AbortController`，不与父 Agent 共享——用户按 ESC 取消主线程不会杀掉后台 Agent。
+
+### 同步 Agent（前台运行）
+
+同步 Agent 的关键特性是 **可后台化**（`AgentTool.tsx:1107`）：
+
+```typescript
+const registration = registerAgentForeground({
+  autoBackgroundMs: getAutoBackgroundMs() || undefined  // 默认 120s
+})
+backgroundPromise = registration.backgroundSignal.then(...)
+```
+
+在 agentic loop 的每次迭代中，系统用 `Promise.race` 竞争下一条消息和后台化信号：
+
+```typescript
+const raceResult = await Promise.race([
+  nextMessagePromise.then(r => ({ type: 'message', result: r })),
+  backgroundPromise  // 超过 autoBackgroundMs 触发
+])
+```
+
+后台化后，前台迭代器被终止（`agentIterator.return()`），新的 `runAgent()` 以 `isAsync: true` 重新启动，当前台的输出文件继续写入。
+
+## 结果回传格式
+
+`mapToolResultToToolResultBlockParam()` 根据状态返回不同格式：
+
+| 状态 | 返回内容 |
+|------|---------|
+| `completed` | 内容 + `<usage>` 块（token/tool_calls/duration）；无内容时插入占位文本 `"(Subagent completed but returned no output.)"` 防止模型误判为空 |
+| `async_launched` | agentId + outputFile 路径 + 操作指引（指引内容取决于 `canReadOutputFile`：有读取权限时提示通过 Read/Bash 查看进度，否则仅告知已启动） |
+| `teammate_spawned` | agent_id + name + team_name |
+| `remote_launched` | taskId + sessionUrl + outputFile |
+
+对于一次性内置 Agent（Explore、Plan），当**不存在** worktree 隔离时，`<usage>` 块和 agentId 尾部被省略——每周节省约 1-2 Gtok 的上下文窗口。存在 worktree 时仍需返回 `worktreePath` 和 `worktreeBranch` 信息。
+
+## MCP 依赖的等待机制
+
+如果 Agent 声明了 `requiredMcpServers`，`call()` 会等待这些服务器连接完成（`AgentTool.tsx:576`）：
+
+```typescript
+const MAX_WAIT_MS = 30_000     // 最长等 30 秒
+const POLL_INTERVAL_MS = 500   // 每 500ms 轮询
+```
+
+早期退出条件：任何必需服务器进入 `failed` 状态时立即停止等待。工具可用性通过 `mcp__` 前缀工具名解析（`mcp__serverName__toolName`）判断。等待结束后如果仍有必需服务器未就绪，`call()` 会抛出错误并明确列出缺失的服务器名称。
+
+## 适用场景
+
+<CardGroup cols={2}>
+  <Card title="并行研究" icon="magnifying-glass">
+    多个 fork 子进程并行搜索不同方向，共享 Prompt Cache 前缀，只有指令不同
+  </Card>
+  <Card title="专业委派" icon="code-branch">
+    使用命名 Agent（Explore/Plan/verification）执行专业任务，受限工具集 + 独立权限
+  </Card>
+  <Card title="隔离实验" icon="flask">
+    `isolation: "worktree"` 在独立工作副本中尝试方案，不影响主分支
+  </Card>
+  <Card title="后台构建" icon="layer-group">
+    `run_in_background: true` 启动长时间构建/测试任务，主 Agent 继续工作
+  </Card>
+</CardGroup>

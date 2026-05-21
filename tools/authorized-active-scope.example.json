@@ -1,0 +1,171 @@
+{
+  "program": "Example Authorized RedScope Active Validation",
+  "owner": "Example Corp",
+  "authorization": {
+    "authorizedBy": "Jane Doe, Security Director",
+    "reference": "ENG-2026-ACTIVE-001",
+    "validFrom": "2026-05-18",
+    "validTo": "2026-06-18",
+    "emergencyContact": "security@example.com"
+  },
+  "testLevels": ["passive", "baseline", "active"],
+  "rateLimits": {
+    "requestsPerSecond": 1,
+    "concurrency": 1
+  },
+  "scannerExecution": {
+    "approvedBy": "Jane Doe, Security Director",
+    "approvalReference": "ENG-2026-SCANNER-BASELINE-001",
+    "changeWindow": "Example low-impact scanner window; add restricted to testLevels only after separate approval.",
+    "allowedTools": ["httpx"],
+    "notes": [
+      "This example approves httpx planning only unless testLevels also includes restricted.",
+      "Add nuclei to allowedTools only after reviewing the template source, severity limits, and request-rate impact for the target."
+    ]
+  },
+  "targets": {
+    "organizations": ["Example Corp"],
+    "domains": ["example.com"],
+    "urls": ["https://www.example.com/"],
+    "ips": ["192.0.2.10"],
+    "cidrs": ["192.0.2.0/24"],
+    "repositories": [],
+    "artifacts": ["tools/artifacts"]
+  },
+  "exclusions": {
+    "domains": ["payments.example.com"],
+    "urls": ["https://www.example.com/logout"],
+    "ips": [],
+    "cidrs": [],
+    "artifacts": []
+  },
+  "technologyEvidence": [
+    {
+      "target": "https://www.example.com/",
+      "vendor": "nginx",
+      "product": "nginx",
+      "version": "1.24.0",
+      "cpe23Name": "cpe:2.3:a:f5:nginx:1.24.0:*:*:*:*:*:*:*",
+      "source": "owner-confirmed",
+      "evidenceId": "CMDB-EXAMPLE-WEB-001",
+      "observedAt": "2026-05-18T00:00:00Z",
+      "confidence": "high",
+      "notes": [
+        "Example owner-confirmed version evidence for smoke tests. Replace before real use."
+      ]
+    }
+  ],
+  "validation": {
+    "approvedBy": "Jane Doe, Security Director",
+    "approvalReference": "ENG-2026-ACTIVE-VALIDATOR-001",
+    "validators": [
+      {
+        "id": "example-server-header-disclosure",
+        "title": "Server header disclosure is observable",
+        "target": "https://www.example.com/",
+        "method": "http-header-present",
+        "requestMethod": "HEAD",
+        "path": "/",
+        "header": "server",
+        "severity": "info",
+        "category": "low-impact-information-disclosure",
+        "impact": "The target discloses server platform metadata in a response header. This is low-impact by itself but can support fingerprinting and prioritization.",
+        "remediation": "Review whether the header is necessary and reduce unnecessary product or version disclosure where operationally feasible.",
+        "references": [],
+        "candidateCves": [],
+        "cpe23Names": ["cpe:2.3:a:f5:nginx:1.24.0:*:*:*:*:*:*:*"],
+        "notes": [
+          "Example low-impact validator for smoke tests. Replace before real use."
+        ]
+      }
+    ]
+  },
+  "logicValidation": {
+    "approvedBy": "Jane Doe, Security Director",
+    "approvalReference": "ENG-2026-BUSINESS-LOGIC-001",
+    "stateChangingApproval": {
+      "approvedBy": "Jane Doe, Security Director",
+      "approvalReference": "ENG-2026-STATEFUL-LOGIC-001",
+      "changeWindow": "Example maintenance window; replace before real use.",
+      "rollbackPlan": "Use only owner-approved disposable test data and restore it after the run.",
+      "maxMutatingRequests": 1,
+      "notes": [
+        "Example metadata only. Add approved-state-changing-http test cases only after separate owner review."
+      ]
+    },
+    "actorSessions": [
+      {
+        "id": "owner-user",
+        "role": "customer",
+        "headerEnv": "REDSCOPE_TEST_OWNER_AUTH",
+        "headerName": "Authorization",
+        "notes": [
+          "Set this environment variable only for an approved test window. RedScope stores only a digest, never the token value.",
+          "For parallel runs against multiple sites, rename this to a site-specific variable such as REDSCOPE_EXAMPLE_OWNER_AUTH.",
+          "Alternatively add a same-origin login block with usernameEnv/passwordEnv so RedScope can bootstrap this header during the approved test window."
+        ]
+      },
+      {
+        "id": "other-user",
+        "role": "customer",
+        "headerEnv": "REDSCOPE_TEST_OTHER_AUTH",
+        "headerName": "Authorization",
+        "notes": [
+          "Use a separate low-privilege actor that should not own the tested object.",
+          "For parallel runs against multiple sites, rename this to a site-specific variable such as REDSCOPE_EXAMPLE_OTHER_AUTH.",
+          "If login bootstrap is not configured or fails, provide this headerEnv value directly."
+        ]
+      }
+    ],
+    "testCases": [
+      {
+        "id": "example-idor-readonly-order-view",
+        "title": "Other customer cannot view owner order details",
+        "category": "idor",
+        "validationMode": "safe-readonly-http",
+        "target": "https://www.example.com/",
+        "path": "/orders/example-order-id",
+        "method": "GET",
+        "controlActor": "owner-user",
+        "testActor": "other-user",
+        "objectOwnerActor": "owner-user",
+        "affectedObject": "example-order-id",
+        "expectedControlStatuses": [200],
+        "expectedDeniedStatuses": [401, 403, 404],
+        "vulnerableStatuses": [200],
+        "severity": "high",
+        "cweIds": ["CWE-639", "CWE-862"],
+        "impact": "A non-owner could view an order object if the test actor receives a successful response for the owner object's URL.",
+        "remediation": "Verify object ownership server-side for every order detail request.",
+        "parallelGroup": "authorization-readonly",
+        "isolatedTestFamily": "idor",
+        "notes": [
+          "Example only. Replace path, actors, and object ID with owner-approved test data before use."
+        ]
+      },
+      {
+        "id": "example-payment-state-review",
+        "title": "Payment state transition requires owner-approved evidence",
+        "category": "payment-flow",
+        "validationMode": "evidence-only",
+        "target": "https://www.example.com/",
+        "expectedOutcome": "Payment state cannot be changed without the authorized payment processor callback or owner-approved test harness.",
+        "observedImpact": false,
+        "evidenceRefs": [],
+        "severity": "critical",
+        "cweIds": ["CWE-840"],
+        "impact": "A payment workflow bypass could alter order fulfillment, price, refund, or settlement state.",
+        "remediation": "Bind payment state changes to signed processor events, idempotency keys, amount/currency checks, and server-side order ownership validation.",
+        "parallelGroup": "payment-state",
+        "isolatedTestFamily": "payment-flow",
+        "notes": [
+          "Keep payment/refund checks evidence-only unless a separate reviewed non-production payment runner is approved."
+        ]
+      }
+    ]
+  },
+  "notes": [
+    "This is a documentation template for active validation smoke tests.",
+    "Replace every example value before real use and keep active testing within written authorization."
+  ]
+}
