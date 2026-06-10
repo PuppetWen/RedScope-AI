@@ -132,6 +132,17 @@ async function formatRuntimeSection(): Promise<string> {
   return lines.join('\n')
 }
 
+export function formatAutoModeAvailability(
+  gateEnabled: boolean,
+  reason: string | null,
+): string {
+  const available = gateEnabled && reason === null
+  return [
+    `Auto mode: ${available ? 'available' : 'unavailable'}`,
+    `  reason=${reason ?? (gateEnabled ? 'none' : 'gate-disabled')}`,
+  ].join('\n')
+}
+
 function formatAutoModeSection(): string {
   let available = false
   let reason: string | null = null
@@ -144,10 +155,7 @@ function formatAutoModeSection(): string {
       `  reason=${error instanceof Error ? error.message : String(error)}`,
     ].join('\n')
   }
-  return [
-    `Auto mode: ${available ? 'available' : 'unavailable'}`,
-    `  reason=${reason ?? 'none'}`,
-  ].join('\n')
+  return formatAutoModeAvailability(available, reason)
 }
 
 export async function formatAutonomyDeepStatusSections({

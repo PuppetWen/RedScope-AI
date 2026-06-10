@@ -1,6 +1,8 @@
 node_modules
 .DS_Store
 dist
+!packages/mcp-chrome-bridge/dist/
+!packages/mcp-chrome-bridge/dist/**
 coverage
 .env
 .env.*

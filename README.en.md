@@ -81,7 +81,7 @@ OpenAI-compatible endpoint:
 ```dotenv
 REDSCOPE_MODEL_PROVIDER=openai
 REDSCOPE_BASE_URL=https://api.openai.com/v1
-REDSCOPE_API_KEY=replace-with-your-key
+REDSCOPE_API_KEY=your-redscope-api-key
 REDSCOPE_MODEL=gpt-4.1
 ```
 
@@ -89,7 +89,7 @@ DeepSeek:
 
 ```dotenv
 REDSCOPE_MODEL_PROVIDER=deepseek
-DEEPSEEK_API_KEY=replace-with-your-key
+DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
@@ -227,6 +227,7 @@ flowchart TD
 - [Self-Hosted Remote Control](docs/features/remote-control-self-hosting.md)
 - [MCP Configuration](docs/extensibility/mcp-configuration.mdx)
 - [Permission Model](docs/safety/permission-model.mdx)
+- Fix List and Goal Mode: [Chinese](docs/fix-list-goal-mode.zh.md) / [English](docs/fix-list-goal-mode.en.md)
 - [External Dependencies](docs/external-dependencies.md)
 
 ## Sponsor
@@ -241,4 +242,3 @@ WeChat / Alipay tips:
 | WeChat | Alipay |
 | --- | --- |
 | <img src="docs/images/sponsor-wechat.png" alt="WeChat tip QR code" width="240"> | <img src="docs/images/sponsor-alipay.png" alt="Alipay tip QR code" width="240"> |
-

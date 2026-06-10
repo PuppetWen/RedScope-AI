@@ -387,6 +387,15 @@ import {
   getCommandQueueLength,
   removeByFilter,
 } from '../utils/messageQueueManager.js';
+import {
+  cancelGoalMode,
+  completeGoalMode,
+  createGoalContinuationCommandIfNeeded,
+  createGoalStartCommand,
+  isGoalContinuationCommand,
+  isGoalStartCommand,
+  startGoalMode,
+} from '../utils/goalMode.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
 import { startBackgroundSession } from '../tasks/LocalMainSessionTask.js';
@@ -506,6 +515,32 @@ const HISTORY_STUB = { maybeLoadOlder: (_: ScrollBoxHandle) => {} };
 // up to read the start → start typing → before this fix, snapped to bottom.
 // https://anthropic.slack.com/archives/C07VBSHV7EV/p1773545449871739
 const RECENT_SCROLL_REPIN_WINDOW_MS = 3000;
+
+type GoalCommandIntent =
+  | { type: 'await-objective' }
+  | { type: 'start'; objective: string }
+  | { type: 'cancel' }
+  | { type: 'complete' }
+  | { type: 'status' }
+
+const GOAL_CANCEL_COMMANDS = new Set(['cancel', 'cancle', 'clear', 'stop', 'off']);
+const GOAL_COMPLETE_COMMANDS = new Set(['done', 'complete', 'completed']);
+
+function parseGoalCommandIntent(input: string): GoalCommandIntent | null {
+  const trimmed = input.trim();
+  const match = /^\/goal(?:\s+(.*))?$/i.exec(trimmed);
+  if (!match) return null;
+
+  const args = match[1]?.trim() ?? '';
+  if (!args) return { type: 'await-objective' };
+
+  const subcommand = args.toLowerCase();
+  if (GOAL_CANCEL_COMMANDS.has(subcommand)) return { type: 'cancel' };
+  if (GOAL_COMPLETE_COMMANDS.has(subcommand)) return { type: 'complete' };
+  if (subcommand === 'status') return { type: 'status' };
+
+  return { type: 'start', objective: args };
+}
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -1690,6 +1725,7 @@ export function REPL({
   const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : remoteSession;
 
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
+  const [goalInputPending, setGoalInputPending] = useState(false);
   const [submitCount, setSubmitCount] = useState(0);
   // Ref instead of state to avoid triggering React re-renders on every
   // streaming text_delta. The spinner reads this via its animation timer.
@@ -1972,6 +2008,54 @@ export function REPL({
     setInputValue,
     setToolJSX,
   });
+
+  const removeQueuedGoalCommands = useCallback(() => {
+    removeByFilter(
+      command =>
+        isGoalStartCommand(command) || isGoalContinuationCommand(command),
+    );
+  }, []);
+
+  const startGoalFromObjective = useCallback(
+    (objective: string) => {
+      removeQueuedGoalCommands();
+      const goal = startGoalMode(objective);
+      enqueue(createGoalStartCommand(goal));
+      addNotification({
+        key: 'goal-mode',
+        text: `Goal mode active: ${goal.objective}`,
+        priority: 'medium',
+      });
+      return goal;
+    },
+    [addNotification, removeQueuedGoalCommands],
+  );
+
+  const handleCancelGoal = useCallback(() => {
+    setGoalInputPending(false);
+    const cancelled = cancelGoalMode();
+    removeQueuedGoalCommands();
+    addNotification({
+      key: 'goal-mode',
+      text: cancelled
+        ? `Goal mode cancelled; any running stage will finish: ${cancelled.objective}`
+        : 'Goal input cancelled.',
+      priority: 'medium',
+    });
+  }, [addNotification, removeQueuedGoalCommands]);
+
+  const handleCompleteGoal = useCallback(() => {
+    setGoalInputPending(false);
+    const completed = completeGoalMode('user-command');
+    removeQueuedGoalCommands();
+    addNotification({
+      key: 'goal-mode',
+      text: completed
+        ? `Goal mode completed: ${completed.objective}`
+        : 'Goal mode is already inactive.',
+      priority: 'medium',
+    });
+  }, [addNotification, removeQueuedGoalCommands]);
 
   const showSpinner =
     (!toolJSX || toolJSX.showSpinner === true) &&
@@ -3583,6 +3667,15 @@ export function REPL({
 
           await mrOnTurnComplete(messagesRef.current, abortController.signal.aborted);
 
+          const goalContinuation = createGoalContinuationCommandIfNeeded({
+            messages: messagesRef.current,
+            queuedCommands: getCommandQueue(),
+            wasAborted: abortController.signal.aborted,
+          });
+          if (goalContinuation) {
+            enqueue(goalContinuation);
+          }
+
           if (feature('UDS_INBOX') && !pipeReturnHadErrorRef.current) {
             relayPipeMessage({
               type: 'done',
@@ -3839,6 +3932,89 @@ export function REPL({
       // Resume loop mode if paused
       if (feature('PROACTIVE') || feature('KAIROS')) {
         proactiveModule?.resumeProactive();
+      }
+
+      if (!speculationAccept && inputMode === 'prompt') {
+        const expandedInput = expandPastedTextRefs(input, pastedContents);
+        const goalIntent = parseGoalCommandIntent(expandedInput);
+        if (goalIntent && goalIntent.type !== 'status') {
+          if (goalIntent.type === 'await-objective') {
+            setGoalInputPending(true);
+            setInputValue('');
+            helpers.setCursorOffset(0);
+            helpers.clearBuffer();
+            setPastedContents({});
+            setInputMode('prompt');
+            addNotification({
+              key: 'goal-mode',
+              text: 'Goal mode: type the goal and press Enter.',
+              priority: 'medium',
+            });
+            return;
+          }
+
+          if (goalIntent.type === 'cancel') {
+            handleCancelGoal();
+            setInputValue('');
+            helpers.setCursorOffset(0);
+            helpers.clearBuffer();
+            setPastedContents({});
+            return;
+          }
+
+          if (goalIntent.type === 'complete') {
+            handleCompleteGoal();
+            setInputValue('');
+            helpers.setCursorOffset(0);
+            helpers.clearBuffer();
+            setPastedContents({});
+            return;
+          }
+
+          startGoalFromObjective(goalIntent.objective);
+          setGoalInputPending(false);
+          if (!options?.fromKeybinding) {
+            addToHistory({
+              display: input.trim(),
+              pastedContents,
+            });
+          }
+          setInputValue('');
+          helpers.setCursorOffset(0);
+          helpers.clearBuffer();
+          setPastedContents({});
+          setSubmitCount(_ => _ + 1);
+          return;
+        }
+
+        if (goalInputPending && goalIntent?.type !== 'status') {
+          const objective = expandedInput.trim();
+          if (!objective) {
+            return;
+          }
+          if (GOAL_CANCEL_COMMANDS.has(objective.toLowerCase())) {
+            handleCancelGoal();
+            setInputValue('');
+            helpers.setCursorOffset(0);
+            helpers.clearBuffer();
+            setPastedContents({});
+            return;
+          }
+          startGoalFromObjective(objective);
+          setGoalInputPending(false);
+          if (!options?.fromKeybinding) {
+            addToHistory({
+              display: `/goal ${input.trim()}`,
+              pastedContents,
+            });
+          }
+          setInputValue('');
+          helpers.setCursorOffset(0);
+          helpers.clearBuffer();
+          setPastedContents({});
+          setSubmitCount(_ => _ + 1);
+          return;
+        }
       }
 
       // Route user input to selected pipe targets (extracted to usePipeRouter)
@@ -4269,6 +4445,7 @@ export function REPL({
       isLoading,
       isExternalLoading,
       inputMode,
+      goalInputPending,
       commands,
       setInputValue,
       setInputMode,
@@ -4290,6 +4467,9 @@ export function REPL({
       setUserInputOnProcessing,
       setAbortController,
       addNotification,
+      startGoalFromObjective,
+      handleCancelGoal,
+      handleCompleteGoal,
       onQuery,
       stashedPrompt,
       setStashedPrompt,
@@ -6260,6 +6440,7 @@ export function REPL({
                       onAgentSubmit={onAgentSubmit}
                       isSearchingHistory={isSearchingHistory}
                       setIsSearchingHistory={setIsSearchingHistory}
+                      isAwaitingGoalInput={goalInputPending}
                       helpOpen={isHelpOpen}
                       setHelpOpen={setIsHelpOpen}
                       insertTextRef={feature('VOICE_MODE') ? insertTextRef : undefined}

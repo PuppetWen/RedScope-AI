@@ -1,6 +1,6 @@
 {
   "name": "@redscope-ai/redscope",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "RedScope AI - security-focused AI CLI for penetration testing, asset reconnaissance, threat tracing, and red-team orchestration",
   "type": "module",
   "author": "RedScope AI",
@@ -44,6 +44,8 @@
     "scripts/setup-chrome-mcp.mjs",
     "scripts/chrome-mcp-bridge-resolver.mjs",
     "scripts/chrome-mcp-env.mjs",
+    "docs/fix-list-goal-mode.zh.md",
+    "docs/fix-list-goal-mode.en.md",
     "tools/authorized-egress.referee-provided.json"
   ],
   "publishConfig": {

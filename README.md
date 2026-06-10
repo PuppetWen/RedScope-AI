@@ -81,7 +81,7 @@ OpenAI 兼容端点示例：
 ```dotenv
 REDSCOPE_MODEL_PROVIDER=openai
 REDSCOPE_BASE_URL=https://api.openai.com/v1
-REDSCOPE_API_KEY=replace-with-your-key
+REDSCOPE_API_KEY=your-redscope-api-key
 REDSCOPE_MODEL=gpt-4.1
 ```
 
@@ -89,7 +89,7 @@ DeepSeek 示例：
 
 ```dotenv
 REDSCOPE_MODEL_PROVIDER=deepseek
-DEEPSEEK_API_KEY=replace-with-your-key
+DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
@@ -227,6 +227,7 @@ flowchart TD
 - [远程控制自托管](docs/features/remote-control-self-hosting.md)
 - [MCP 配置](docs/extensibility/mcp-configuration.mdx)
 - [权限模型](docs/safety/permission-model.mdx)
+- 修复清单与 Goal Mode：[中文](docs/fix-list-goal-mode.zh.md) / [English](docs/fix-list-goal-mode.en.md)
 - [外部依赖](docs/external-dependencies.md)
 
 ## 赞助打赏

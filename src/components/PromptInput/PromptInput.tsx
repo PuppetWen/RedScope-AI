@@ -124,6 +124,7 @@ import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { TeamsDialog } from '../teams/TeamsDialog.js';
 import VimTextInput from '../VimTextInput.js';
 import { getModeFromInput, getValueFromInput } from './inputModes.js';
+import { GoalModePin } from './GoalModePin.js';
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT, Notifications } from './Notifications.js';
 import PromptInputFooter from './PromptInputFooter.js';
 import type { SuggestionItem } from './PromptInputFooterSuggestions.js';
@@ -206,6 +207,7 @@ type Props = {
   setIsSearchingHistory: (isSearching: boolean) => void;
   onDismissSideQuestion?: () => void;
   isSideQuestionVisible?: boolean;
+  isAwaitingGoalInput?: boolean;
   helpOpen: boolean;
   setHelpOpen: React.Dispatch<React.SetStateAction<boolean>>;
   hasSuppressedDialogs?: boolean;
@@ -259,6 +261,7 @@ function PromptInput({
   setIsSearchingHistory,
   onDismissSideQuestion,
   isSideQuestionVisible,
+  isAwaitingGoalInput = false,
   helpOpen,
   setHelpOpen,
   hasSuppressedDialogs,
@@ -2416,6 +2419,7 @@ function PromptInput({
   return (
     <Box flexDirection="column" marginTop={briefOwnsGap ? 0 : 1}>
       {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
+      <GoalModePin isAwaitingGoalInput={isAwaitingGoalInput} />
       {hasSuppressedDialogs && (
         <Box marginTop={1} marginLeft={2}>
           <Text dimColor>Waiting for permission…</Text>

@@ -165,6 +165,7 @@ import thinkbackPlay from './commands/thinkback-play/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
 import fast from './commands/fast/index.js'
+import goal from './commands/goal.js'
 import passes from './commands/passes/index.js'
 import privacySettings from './commands/privacy-settings/index.js'
 import hooks from './commands/hooks/index.js'
@@ -319,6 +320,7 @@ const COMMANDS = memoize((): Command[] => [
   exit,
   fast,
   files,
+  goal,
   heapDump,
   help,
   ide,
@@ -691,6 +693,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   feedback, // Send feedback
   plan, // Plan mode toggle
   proactive, // Toggle proactive mode
+  goal, // Persistent goal mode
   keybindings, // Keybinding management
   statusline, // Status line toggle
   stickers, // Stickers
