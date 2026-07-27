@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { formatAPIError } from '@ant/model-provider';
 import type { SystemAPIErrorMessage } from 'src/types/message.js';
+import { summarizeApiErrorForDisplay } from 'src/services/api/errors.js';
 import { useInterval } from 'usehooks-ts';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { MessageResponse } from '../MessageResponse.js';
@@ -37,13 +38,15 @@ export function SystemAPIErrorMessage({
   const retryInSecondsLive = Math.max(0, Math.round((_retryInMs - countdownMs) / 1000));
 
   const formatted = formatAPIError(_error);
+  const summary = !verbose ? summarizeApiErrorForDisplay(formatted) : null;
   const truncated = !verbose && formatted.length > MAX_API_ERROR_CHARS;
+  const collapsed = summary !== null || truncated;
 
   return (
     <MessageResponse>
       <Box flexDirection="column">
-        <Text color="error">{truncated ? formatted.slice(0, MAX_API_ERROR_CHARS) + '…' : formatted}</Text>
-        {truncated && <CtrlOToExpand />}
+        <Text color="error">{summary ?? (truncated ? formatted.slice(0, MAX_API_ERROR_CHARS) + '…' : formatted)}</Text>
+        {collapsed && <CtrlOToExpand />}
         <Text dimColor>
           Retrying in {retryInSecondsLive} {retryInSecondsLive === 1 ? 'second' : 'seconds'}… (attempt {_retryAttempt}/
           {_maxRetries})

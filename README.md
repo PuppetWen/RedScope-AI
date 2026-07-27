@@ -4,6 +4,7 @@
 
 [![license: Anti 996](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)
 [![link: 996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
+[![npm](https://img.shields.io/npm/v/@redscope-ai/redscope?label=npm)](https://www.npmjs.com/package/@redscope-ai/redscope)
 [![issues](https://img.shields.io/github/issues/PuppetWen/RedScope-AI?label=issues)](https://github.com/PuppetWen/RedScope-AI/issues)
 [![stars](https://img.shields.io/github/stars/PuppetWen/RedScope-AI?label=stars)](https://github.com/PuppetWen/RedScope-AI/stargazers)
 
@@ -14,6 +15,7 @@ RedScope AI 是一个面向安全团队、渗透测试、资产侦察、威胁�
 ## 目录
 
 - [项目能力](#项目能力)
+- [1.0.7 更新重点](#107-更新重点)
 - [快速安装](#快速安装)
 - [配置模型](#配置模型)
 - [基本使用](#基本使用)
@@ -34,11 +36,21 @@ RedScope AI 是一个面向安全团队、渗透测试、资产侦察、威胁�
 - 远程控制：自托管 Remote Control Server 和 ACP/Bridge 相关能力
 - 插件与 Agent：插件 marketplace、自定义 agent、slash command、hooks、settings 分层配置
 
+## 1.0.7 更新重点
+
+- 新增入口状态 HUD：集中展示 Goal/Autonomy、活动目标、侦察发现、出口 IP、PoC 引用、首次设置和 Nuclei 状态；进入界面时显示，正式对话开始后自动隐藏。
+- 改进小窗口布局：窄终端改为完整换行展示，中等宽度使用紧凑视图，宽终端使用双栏详细视图。
+- 完善 Goal 模式与自动化状态：`/goal` 任务、持续运行状态以及 `autonomy status --deep` 中的 engagement、egress、PoC 和 first-run 信息更清晰。
+- 增加授权出口 IP 池、公共代理池、技术指纹与 n-day 引用捕获、PoC 引用目录、Nuclei 安装检测及证据化验证辅助能力。
+- API 失败现在显示可读摘要；原始错误仍可在详细模式和 transcript 中查看。
+- 补齐 `health`、Node/Bun 生产冒烟测试与 bundle 完整性检查，并修复发布包的运行时依赖兼容问题。
+
 ## 快速安装
 
 要求：
 
-- Node.js/npm
+- Node.js 18+ 和 npm（默认 `redscope` 入口）
+- Bun 1.2+（源码开发或 `redscope-bun` 入口）
 
 ```bash
 npm i -g @redscope-ai/redscope
@@ -65,6 +77,8 @@ bun run dev:inspect
 bun run typecheck
 bun test
 bun run test:all
+bun run health
+bun run test:production:offline
 ```
 
 ## 配置模型
@@ -209,6 +223,7 @@ flowchart TD
 ## 技术栈
 
 - 运行时：Bun
+- 发布入口：Node.js 18+（默认）与 Bun 1.2+（可选）
 - 开发语言：TypeScript、TSX、ESM
 - CLI 框架：Commander.js
 - 终端界面：React 19 + Ink fork
@@ -218,7 +233,7 @@ flowchart TD
 - 模型提供方：Anthropic SDK、OpenAI 兼容 Chat Completions、Gemini、Grok、AWS Bedrock、Google Vertex、Azure Foundry
 - 扩展能力：MCP、插件、自定义 Agent、slash command、hooks
 - 远程界面：`packages/remote-control-server` 中的 React + Vite + Radix UI
-- 代理池切换：将ip填写在.redscope/authorized-egress.referee-provided.json中可自动切换ip测试
+- 出口 IP 切换：在 `~/.redscope/authorized-egress.referee-provided.json` 配置授权节点，或显式启用首次运行代理池；测试步骤可在节点失败或被限流时自动切换。
 
 ## 文档
 

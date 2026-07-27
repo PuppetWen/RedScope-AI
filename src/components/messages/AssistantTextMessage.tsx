@@ -15,6 +15,7 @@ import {
   ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   startsWithApiErrorPrefix,
+  summarizeApiErrorForDisplay,
   TOKEN_REVOKED_ERROR_MESSAGE,
 } from '../../services/api/errors.js';
 import { isEmptyMessageText, NO_RESPONSE_REQUESTED } from '../../utils/messages.js';
@@ -155,18 +156,22 @@ export function AssistantTextMessage({
 
     default:
       if (startsWithApiErrorPrefix(text)) {
+        const summary = !verbose ? summarizeApiErrorForDisplay(text) : null;
         const truncated = !verbose && text.length > MAX_API_ERROR_CHARS;
+        const collapsed = summary !== null || truncated;
         return (
           <MessageResponse>
             <Box flexDirection="column">
               <Text color="error">
                 {text === API_ERROR_MESSAGE_PREFIX
                   ? `${API_ERROR_MESSAGE_PREFIX}: Please wait a moment and try again.`
-                  : truncated
-                    ? text.slice(0, MAX_API_ERROR_CHARS) + '…'
-                    : text}
+                  : summary
+                    ? summary
+                    : truncated
+                      ? text.slice(0, MAX_API_ERROR_CHARS) + '…'
+                      : text}
               </Text>
-              {truncated && <CtrlOToExpand />}
+              {collapsed && <CtrlOToExpand />}
             </Box>
           </MessageResponse>
         );
@@ -180,13 +185,13 @@ export function AssistantTextMessage({
           width="100%"
           backgroundColor={isSelected ? 'messageActionsBackground' : undefined}
         >
-          <Box flexDirection="row">
+          <Box flexDirection="row" flexGrow={1}>
             {shouldShowDot && (
               <NoSelect fromLeftEdge minWidth={2}>
-                <Text color={isSelected ? 'suggestion' : 'text'}>{BLACK_CIRCLE}</Text>
+                <Text color={isSelected ? 'suggestion' : 'claude'}>{BLACK_CIRCLE}</Text>
               </NoSelect>
             )}
-            <Box flexDirection="column">
+            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
               <Markdown>{text}</Markdown>
             </Box>
           </Box>

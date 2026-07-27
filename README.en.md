@@ -4,6 +4,7 @@ English | [中文](README.md)
 
 [![license: Anti 996](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)
 [![link: 996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
+[![npm](https://img.shields.io/npm/v/@redscope-ai/redscope?label=npm)](https://www.npmjs.com/package/@redscope-ai/redscope)
 [![issues](https://img.shields.io/github/issues/PuppetWen/RedScope-AI?label=issues)](https://github.com/PuppetWen/RedScope-AI/issues)
 [![stars](https://img.shields.io/github/stars/PuppetWen/RedScope-AI?label=stars)](https://github.com/PuppetWen/RedScope-AI/stargazers)
 
@@ -14,6 +15,7 @@ RedScope AI is a security-focused AI CLI for penetration testing, asset reconnai
 ## Contents
 
 - [What It Does](#what-it-does)
+- [1.0.7 Highlights](#107-highlights)
 - [Install](#install)
 - [Model Configuration](#model-configuration)
 - [Usage](#usage)
@@ -34,11 +36,21 @@ RedScope AI is a security-focused AI CLI for penetration testing, asset reconnai
 - Remote control: self-hosted Remote Control Server plus ACP/Bridge-related integrations
 - Extensibility: plugin marketplace, custom agents, slash commands, hooks, layered settings
 
+## 1.0.7 Highlights
+
+- Added an entry-screen status HUD for Goal/Autonomy, active targets, recon findings, egress IPs, PoC references, first-run setup, and Nuclei readiness. It automatically disappears once a real conversation begins.
+- Improved responsive terminal rendering: narrow windows wrap complete values, medium windows use a compact view, and wide windows use a detailed two-column layout.
+- Expanded Goal mode and autonomy visibility, including engagement, egress, PoC, and first-run sections in `autonomy status --deep`.
+- Added authorized egress/public proxy pools, technology fingerprint and n-day reference capture, a scope-gated PoC reference catalog, Nuclei detection/setup, and evidence-based verification helpers.
+- API failures now render a readable summary while preserving the complete error in verbose and transcript views.
+- Restored health and Node/Bun production smoke commands, strengthened bundle integrity checks, and fixed published-package runtime dependency compatibility.
+
 ## Install
 
 Requirements:
 
-- Node.js/npm
+- Node.js 18+ and npm for the default `redscope` entry
+- Bun 1.2+ for source development or the `redscope-bun` entry
 
 ```bash
 npm i -g @redscope-ai/redscope
@@ -65,6 +77,8 @@ Common checks:
 bun run typecheck
 bun test
 bun run test:all
+bun run health
+bun run test:production:offline
 ```
 
 ## Model Configuration
@@ -208,7 +222,7 @@ flowchart TD
 
 ## Tech Stack
 
-- Runtime: Bun
+- Runtime: Node.js 18+ by default, with Bun 1.2+ as an alternative/source runtime
 - Language: TypeScript, TSX, ESM
 - CLI: Commander.js
 - Terminal UI: React 19 + Ink fork
@@ -218,7 +232,7 @@ flowchart TD
 - Providers: Anthropic SDK, OpenAI-compatible Chat Completions, Gemini, Grok, AWS Bedrock, Google Vertex, Azure Foundry
 - Extensibility: MCP, plugins, custom agents, hooks, slash commands
 - Remote UI: React + Vite + Radix UI in `packages/remote-control-server`
-- Proxy pool switching: Fill in the ip in.redscope/authorized-egress.referee-provided.json to automatically switch the ip test
+- Egress IP rotation: configure authorized nodes in `~/.redscope/authorized-egress.referee-provided.json`, or explicitly enable the first-run proxy pool. Test steps can rotate when a node fails or is rate-limited.
 
 ## Documentation
 

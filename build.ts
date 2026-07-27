@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, cp } from 'fs/promises'
 import { join } from 'path'
 import { getMacroDefines } from './scripts/defines.ts'
 import { DEFAULT_BUILD_FEATURES } from './scripts/defines.ts'
+import { patchNodeFetchWithNativeFetch } from './scripts/bundle-compat.ts'
 
 const outdir = 'dist'
 
@@ -33,6 +34,28 @@ if (!result.success) {
   process.exit(1)
 }
 
+// Bundle postinstall helpers so the published package does not depend on the
+// source tree or raw TypeScript files.
+const supportResult = await Bun.build({
+  entrypoints: [
+    'scripts/gen-poc-catalog.ts',
+    'scripts/redscope-proxy-scrape.ts',
+  ],
+  outdir: join(outdir, 'scripts'),
+  target: 'bun',
+  splitting: true,
+  define: getMacroDefines(),
+  features,
+})
+
+if (!supportResult.success) {
+  console.error('Support script build failed:')
+  for (const log of supportResult.logs) {
+    console.error(log)
+  }
+  process.exit(1)
+}
+
 // Step 3: Post-process — replace Bun-only `import.meta.require` with Node.js compatible version
 const files = await readdir(outdir)
 const IMPORT_META_REQUIRE = 'var __require = import.meta.require;'
@@ -55,6 +78,7 @@ for (const file of files) {
 // Also patch unguarded globalThis.Bun destructuring from third-party deps
 // (e.g. @anthropic-ai/sandbox-runtime) so Node.js doesn't crash at import time.
 let bunPatched = 0
+let fetchPatched = 0
 const BUN_DESTRUCTURE = /var \{([^}]+)\} = globalThis\.Bun;?/g
 const BUN_DESTRUCTURE_SAFE =
   'var {$1} = typeof globalThis.Bun !== "undefined" ? globalThis.Bun : {};'
@@ -62,18 +86,22 @@ for (const file of files) {
   if (!file.endsWith('.js')) continue
   const filePath = join(outdir, file)
   const content = await readFile(filePath, 'utf-8')
-  if (BUN_DESTRUCTURE.test(content)) {
-    await writeFile(
-      filePath,
-      content.replace(BUN_DESTRUCTURE, BUN_DESTRUCTURE_SAFE),
-    )
-    bunPatched++
+  const bunCompatible = content.replace(
+    BUN_DESTRUCTURE,
+    (_match, destructured: string) => {
+      bunPatched++
+      return BUN_DESTRUCTURE_SAFE.replace('$1', destructured)
+    },
+  )
+  const fetchCompatible = patchNodeFetchWithNativeFetch(bunCompatible)
+  fetchPatched += fetchCompatible.patched
+  if (fetchCompatible.content !== content) {
+    await writeFile(filePath, fetchCompatible.content)
   }
 }
-BUN_DESTRUCTURE.lastIndex = 0
 
 console.log(
-  `Bundled ${result.outputs.length} files to ${outdir}/ (patched ${patched} for import.meta.require, ${bunPatched} for Bun destructure)`,
+  `Bundled ${result.outputs.length + supportResult.outputs.length} files to ${outdir}/ (patched ${patched} for import.meta.require, ${bunPatched} for Bun destructure, ${fetchPatched} for native fetch)`,
 )
 
 // Step 4: Copy native .node addon files (audio-capture) and vendored binaries (ripgrep)

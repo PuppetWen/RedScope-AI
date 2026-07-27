@@ -41,24 +41,22 @@ export function GoalModePin({
         width="100%"
         flexDirection="row"
         justifyContent="space-between"
+        alignItems="center"
       >
         <Box flexShrink={1}>
           <Text color={activeGoal ? 'suggestion' : 'warning'} bold>
-            {status}
+            {activeGoal ? '◎' : '○'} {status}
           </Text>
-          <Text dimColor> · </Text>
+          <Text dimColor>  </Text>
           <Text wrap="truncate">{truncated}</Text>
           {activeGoal && (
             <>
-              <Text dimColor> · </Text>
-              <Text dimColor>runs until complete</Text>
+              <Text dimColor>  ·  </Text>
+              <Text dimColor>until complete</Text>
             </>
           )}
         </Box>
-        <Box
-          marginLeft={1}
-          flexShrink={0}
-        >
+        <Box marginLeft={1} flexShrink={0}>
           <Text dimColor>/goal cancel</Text>
         </Box>
       </Box>

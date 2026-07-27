@@ -125,6 +125,8 @@ import { TeamsDialog } from '../teams/TeamsDialog.js';
 import VimTextInput from '../VimTextInput.js';
 import { getModeFromInput, getValueFromInput } from './inputModes.js';
 import { GoalModePin } from './GoalModePin.js';
+import { RedScopeStatusHud } from './RedScopeStatusHud.js';
+import { shouldShowRedscopeStatusHud } from '../../utils/redscopeStatus.js';
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT, Notifications } from './Notifications.js';
 import PromptInputFooter from './PromptInputFooter.js';
 import type { SuggestionItem } from './PromptInputFooterSuggestions.js';
@@ -270,6 +272,7 @@ function PromptInput({
   voiceInterimRange,
 }: Props): React.ReactNode {
   const mainLoopModel = useMainLoopModel();
+  const showRedscopeStatusHud = useMemo(() => shouldShowRedscopeStatusHud(messages), [messages]);
   // A local-jsx command (e.g., /mcp while agent is running) renders a full-
   // screen dialog on top of PromptInput via the immediate-command path with
   // shouldHidePromptInput: false. Those dialogs don't register in the overlay
@@ -2420,6 +2423,7 @@ function PromptInput({
     <Box flexDirection="column" marginTop={briefOwnsGap ? 0 : 1}>
       {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
       <GoalModePin isAwaitingGoalInput={isAwaitingGoalInput} />
+      {showRedscopeStatusHud && <RedScopeStatusHud />}
       {hasSuppressedDialogs && (
         <Box marginTop={1} marginLeft={2}>
           <Text dimColor>Waiting for permission…</Text>

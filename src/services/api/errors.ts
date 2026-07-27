@@ -59,6 +59,52 @@ export function startsWithApiErrorPrefix(text: string): boolean {
     text.startsWith(`Please run /login · ${API_ERROR_MESSAGE_PREFIX}`)
   )
 }
+
+/**
+ * Collapse OpenAI-compatible JSON error envelopes into a readable one-line
+ * summary. The raw error remains available in verbose/transcript mode.
+ */
+export function summarizeApiErrorForDisplay(text: string): string | null {
+  if (!startsWithApiErrorPrefix(text)) return null
+
+  const jsonStart = text.indexOf('{')
+  const jsonEnd = text.lastIndexOf('}')
+  if (jsonStart < 0 || jsonEnd <= jsonStart) return null
+
+  try {
+    const payload = JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as Record<
+      string,
+      unknown
+    >
+    const nested =
+      payload.error && typeof payload.error === 'object'
+        ? (payload.error as Record<string, unknown>)
+        : payload
+    if (typeof nested.message !== 'string' || nested.message.trim() === '') {
+      return null
+    }
+
+    const clean = (value: string, max: number) => {
+      const singleLine = value.replace(/\s+/g, ' ').trim()
+      return singleLine.length > max
+        ? `${singleLine.slice(0, max - 1)}…`
+        : singleLine
+    }
+    const status = text.slice(0, jsonStart).match(/API Error:?\s*(\d{3})/i)?.[1]
+    const heading = `${
+      text.startsWith('Please run /login') ? 'Please run /login · ' : ''
+    }API Error${status ? ` ${status}` : ''}`
+    const message = clean(nested.message, 180)
+    const code =
+      typeof nested.code === 'string' && nested.code.trim() !== ''
+        ? clean(nested.code, 80)
+        : null
+
+    return `${heading} · ${message}${code ? ` (${code})` : ''}`
+  } catch {
+    return null
+  }
+}
 export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
 
 export function isPromptTooLongMessage(msg: AssistantMessage): boolean {

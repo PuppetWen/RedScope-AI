@@ -23,7 +23,7 @@ export function MessageModel({ message, isTranscriptMode }: Props): React.ReactN
   const model = message.message!.model as string;
 
   return (
-    <Box minWidth={stringWidth(model) + 8}>
+    <Box minWidth={stringWidth(model)}>
       <Text dimColor>{model}</Text>
     </Box>
   );

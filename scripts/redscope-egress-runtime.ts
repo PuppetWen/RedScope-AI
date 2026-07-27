@@ -176,6 +176,16 @@ function selectedConfigPath(): string | undefined {
 async function defaultConfigPath(): Promise<string | undefined> {
   const explicit = selectedConfigPath()
   if (explicit) return explicit
+  // Prefer user-opted public free-proxy pool (first-run / postinstall / scrape).
+  const publicPoolCandidates = [
+    process.env.REDSCOPE_PUBLIC_PROXY_POOL,
+    // user config dir is resolved by the publicProxyPool helper path convention
+    join(process.env.REDSCOPE_CONFIG_DIR ?? join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.redscope'), 'public-free-proxies.json'),
+    join(repoRoot, 'public-free-proxies.json'),
+  ].filter((p): p is string => Boolean(p))
+  for (const candidate of publicPoolCandidates) {
+    if (await pathExists(candidate)) return candidate
+  }
   const userConfig = getExistingRefereeEgressConfigFilePath()
   if (userConfig) return userConfig
   if (await pathExists(defaultRefereeConfigPath)) return defaultRefereeConfigPath

@@ -25,6 +25,27 @@ import {
 import { formatWorkflowRunsStatus, listWorkflowRuns } from './workflowRuns.js'
 import { formatPipeRegistryStatus } from './pipeStatus.js'
 import { formatRemoteControlLocalStatus } from './remoteControlStatus.js'
+import {
+  formatEgressStatus,
+  getEgressStatePath,
+  loadEgressConfig,
+  loadEgressRotationState,
+  summarizeEgress,
+} from './egressPool.js'
+import {
+  formatEngagementStatus,
+  loadEngagementGraph,
+  summarizeEngagement,
+} from './engagementGraph.js'
+import {
+  formatPocCatalogStatus,
+  loadPocCatalog,
+  summarizePocCatalog,
+} from './pocCatalog.js'
+import {
+  formatFirstRunStatus,
+  loadFirstRunState,
+} from './firstRunSetup.js'
 
 type DeepStatusParams = {
   runs: AutonomyRunRecord[]
@@ -34,6 +55,10 @@ type DeepStatusParams = {
 
 export type AutonomyDeepStatusSectionId =
   | 'auto-mode'
+  | 'first-run'
+  | 'engagement'
+  | 'egress'
+  | 'poc'
   | 'runs'
   | 'flows'
   | 'cron'
@@ -158,6 +183,48 @@ function formatAutoModeSection(): string {
   return formatAutoModeAvailability(available, reason)
 }
 
+function formatEngagementSection(): string {
+  try {
+    return formatEngagementStatus(summarizeEngagement(loadEngagementGraph()))
+  } catch (error) {
+    return `Engagement: unknown\n  reason=${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+}
+
+function formatEgressSection(nowMs: number): string {
+  try {
+    const config = loadEgressConfig()
+    const state = loadEgressRotationState(getEgressStatePath(config))
+    return formatEgressStatus(summarizeEgress({ config, state, nowMs }))
+  } catch (error) {
+    return `Egress pool: unknown\n  reason=${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+}
+
+function formatPocSection(): string {
+  try {
+    return formatPocCatalogStatus(summarizePocCatalog(loadPocCatalog()))
+  } catch (error) {
+    return `PoC references: unknown\n  reason=${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+}
+
+function formatFirstRunSection(): string {
+  try {
+    return formatFirstRunStatus(loadFirstRunState())
+  } catch (error) {
+    return `First-run: unknown\n  reason=${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+}
+
 export async function formatAutonomyDeepStatusSections({
   runs,
   flows,
@@ -168,6 +235,26 @@ export async function formatAutonomyDeepStatusSections({
       id: 'auto-mode' as const,
       title: 'Auto Mode',
       content: formatAutoModeSection(),
+    }),
+    Promise.resolve({
+      id: 'first-run' as const,
+      title: 'First Run',
+      content: formatFirstRunSection(),
+    }),
+    Promise.resolve({
+      id: 'engagement' as const,
+      title: 'Engagement',
+      content: formatEngagementSection(),
+    }),
+    Promise.resolve({
+      id: 'egress' as const,
+      title: 'Egress',
+      content: formatEgressSection(nowMs),
+    }),
+    Promise.resolve({
+      id: 'poc' as const,
+      title: 'PoC References',
+      content: formatPocSection(),
     }),
     Promise.resolve({
       id: 'runs' as const,

@@ -82,6 +82,13 @@ export function UserPromptMessage({ addMargin, param: { text }, isTranscriptMode
       flexDirection="column"
       marginTop={addMargin ? 1 : 0}
       backgroundColor={isSelected ? 'messageActionsBackground' : useBriefLayout ? undefined : 'userMessageBackground'}
+      borderStyle={useBriefLayout ? undefined : 'single'}
+      borderTop={false}
+      borderBottom={false}
+      borderRight={false}
+      borderLeft={!useBriefLayout}
+      borderLeftColor={isSelected ? 'suggestion' : 'inactive'}
+      paddingLeft={useBriefLayout ? 0 : 1}
       paddingRight={useBriefLayout ? 0 : 1}
     >
       <HighlightedThinkingText

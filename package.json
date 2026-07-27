@@ -1,16 +1,16 @@
 {
   "name": "@redscope-ai/redscope",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "RedScope AI - security-focused AI CLI for penetration testing, asset reconnaissance, threat tracing, and red-team orchestration",
   "type": "module",
   "author": "RedScope AI",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/redscope-ai/redscope-ai.git"
+    "url": "git+https://github.com/PuppetWen/RedScope-AI.git"
   },
-  "homepage": "https://github.com/redscope-ai/redscope-ai#readme",
+  "homepage": "https://github.com/PuppetWen/RedScope-AI#readme",
   "bugs": {
-    "url": "https://github.com/redscope-ai/redscope-ai/issues"
+    "url": "https://github.com/PuppetWen/RedScope-AI/issues"
   },
   "keywords": [
     "redscope",
@@ -23,7 +23,8 @@
     "repl"
   ],
   "engines": {
-    "bun": ">=1.2.0"
+    "bun": ">=1.2.0",
+    "node": ">=18.0.0"
   },
   "bin": {
     "redscope": "dist/cli-node.js",
@@ -39,11 +40,16 @@
   ],
   "files": [
     "dist",
+    "README.en.md",
     "scripts/postinstall.cjs",
     "scripts/run-parallel.mjs",
     "scripts/setup-chrome-mcp.mjs",
     "scripts/chrome-mcp-bridge-resolver.mjs",
     "scripts/chrome-mcp-env.mjs",
+    "scripts/check-bundle-integrity.ts",
+    "scripts/health-check.ts",
+    "scripts/postinstall-redscope-bootstrap.cjs",
+    "scripts/production-test.ts",
     "docs/fix-list-goal-mode.zh.md",
     "docs/fix-list-goal-mode.en.md",
     "tools/authorized-egress.referee-provided.json"
@@ -84,8 +90,16 @@
     "redscope:drafts": "bun run scripts/redscope-draft-generator.ts",
     "redscope:sources": "bun run scripts/redscope-source-updater.ts",
     "redscope:egress": "bun run scripts/redscope-egress-policy.ts",
+    "redscope:egress-refresh": "bun run scripts/redscope-egress-refresh.ts",
+    "redscope:proxy-scrape": "bun run scripts/redscope-proxy-scrape.ts",
+    "redscope:first-run": "bun run scripts/redscope-first-run.ts",
+    "redscope:fingerprint-nday": "bun run scripts/redscope-fingerprint-nday.ts",
+    "redscope:bootstrap": "node scripts/postinstall-redscope-bootstrap.cjs",
+    "redscope:nuclei-setup": "bun run scripts/redscope-nuclei-setup.ts",
+    "redscope:recon-map": "bun run scripts/gen-recon-map.ts",
+    "redscope:poc-catalog": "bun run scripts/gen-poc-catalog.ts",
     "redscope:publish-guard": "bun run scripts/redscope-publish-guard.ts",
-    "postinstall": "node scripts/run-parallel.mjs scripts/postinstall.cjs scripts/setup-chrome-mcp.mjs",
+    "postinstall": "node scripts/run-parallel.mjs scripts/postinstall.cjs scripts/setup-chrome-mcp.mjs scripts/postinstall-redscope-bootstrap.cjs",
     "typecheck": "tsc --noEmit",
     "test:all": "bun run typecheck && bun test",
     "rcs": "bun run scripts/rcs.ts"

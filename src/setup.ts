@@ -294,6 +294,63 @@ export async function setup(
       ).initContextCollapse()
       /* eslint-enable @typescript-eslint/no-require-imports */
     }
+
+    // First-run: if the operator has never decided on public-proxy scrape +
+    // silent PoC collection, surface a one-line hint (interactive prompt is
+    // via `bun run redscope:first-run` / `redscope first-run` so we don't block
+    // the REPL event loop here). Auto-refresh public proxies when previously
+    // opted-in and the pool looks stale (>6h).
+    try {
+      const {
+        getFirstRunPrompt,
+        loadFirstRunState,
+      } = require('./utils/firstRunSetup.js') as typeof import('./utils/firstRunSetup.js')
+      const prompt = getFirstRunPrompt()
+      if (prompt.needed && !getIsNonInteractiveSession()) {
+        console.log(
+          chalk.yellow(
+            '\n① RedScope first-run setup is pending.\n' +
+              '   Run: ' +
+              chalk.bold('bun run redscope:first-run') +
+              '  to scrape ~500 public IPs and silently collect ≥100 PoC refs.\n',
+          ),
+        )
+      } else {
+        const state = loadFirstRunState()
+        if (state?.scrapeProxies) {
+          const last = state.lastProxyRefreshAt
+            ? Date.parse(state.lastProxyRefreshAt)
+            : 0
+          const staleMs = 6 * 60 * 60 * 1000
+          if (!last || Date.now() - last > staleMs) {
+            // Fire-and-forget refresh so startup stays snappy.
+            void (async () => {
+              try {
+                const {
+                  refreshPublicProxyPool,
+                } = require('./utils/publicProxyPool.js') as typeof import('./utils/publicProxyPool.js')
+                const { saveFirstRunState } =
+                  require('./utils/firstRunSetup.js') as typeof import('./utils/firstRunSetup.js')
+                const { result } = await refreshPublicProxyPool({ limit: 500 })
+                saveFirstRunState({
+                  ...state,
+                  proxyCount: result.kept,
+                  lastProxyRefreshAt: result.fetchedAt,
+                })
+                logForDiagnosticsNoPII(
+                  'info',
+                  `public_proxy_auto_refresh kept=${result.kept}`,
+                )
+              } catch {
+                // best-effort
+              }
+            })()
+          }
+        }
+      }
+    } catch {
+      // First-run is optional; never block setup on it.
+    }
   }
   void lockCurrentVersion() // Lock current version to prevent deletion by other processes
   logForDiagnosticsNoPII('info', 'setup_background_jobs_launched')
