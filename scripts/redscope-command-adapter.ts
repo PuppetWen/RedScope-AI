@@ -10,6 +10,7 @@ import {
   sep,
 } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateSemgrepBaseline } from './redscope-semgrep-options.ts'
 import net from 'node:net'
 import { ensureRedScopeSourcesFresh } from './redscope-source-updater.ts'
 import { envPathFrom } from './redscope-env-config.ts'
@@ -31,6 +32,7 @@ type Options = {
   outputRoot?: string
   memoryRoot?: string
   semgrepConfig?: string
+  semgrepBaseline?: string
   execute: boolean
   confirmActive: boolean
   dryRun: boolean
@@ -88,6 +90,7 @@ Profile inference:
 
 Options:
   --profile <id>        Override inferred profile
+  --semgrep-baseline <sha> Compare --semgrep-sast with a local Git commit
   --scope <path>        Scope file required before workflow execution
   --execute             Pass through to redscope:workflow
   --confirm-active      Pass through to redscope:workflow
@@ -203,6 +206,9 @@ function parseArgs(argv: string[]): Options {
           break
         case '--semgrep-config':
           options.semgrepConfig = next
+          break
+        case '--semgrep-baseline':
+          options.semgrepBaseline = next
           break
         default:
           usage()
@@ -349,6 +355,8 @@ function buildSuggestedCommand(
   ]
   if (options.repository) args.push('--repository', options.repository)
   if (options.artifact) args.push('--artifact', options.artifact)
+  if (options.semgrepBaseline) args.push('--semgrep-baseline', options.semgrepBaseline)
+  if (options.semgrepConfig) args.push('--semgrep-config', options.semgrepConfig)
   if (options.execute) args.push('--execute')
   if (options.confirmActive) args.push('--confirm-active')
   return args
@@ -369,6 +377,7 @@ function workflowArgs(options: Options, profile: string): string[] {
   if (options.memoryRoot) args.push('--memory-root', options.memoryRoot)
   if (options.semgrepConfig) args.push('--semgrep-config', options.semgrepConfig)
   if (options.execute) args.push('--execute')
+  if (options.semgrepBaseline) args.push('--semgrep-baseline', options.semgrepBaseline)
   if (options.confirmActive) args.push('--confirm-active')
   if (options.dryRun) args.push('--dry-run')
   if (options.skipReport) args.push('--skip-report')
@@ -453,6 +462,7 @@ function renderText(result: AdapterResult) {
 async function runAdapter(options: Options) {
   await validateInputPaths(options)
   const inferred = inferProfile(options)
+  validateSemgrepBaseline(options.semgrepBaseline, inferred.profile)
   const target = options.repository ?? options.artifact ?? options.target
   const now = new Date().toISOString()
 

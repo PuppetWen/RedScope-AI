@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { createHash } from 'node:crypto'
+import { hashFile } from './redscope-file-integrity.mjs'
 import { constants as fsConstants } from 'node:fs'
 import {
   access,
@@ -102,6 +102,7 @@ type Finding = {
   evidenceClass?: EvidenceClass
   target: string
   sourceTool: string
+  ruleId?: string
   evidence: EvidenceReference[]
   description: string
   impact: string
@@ -153,6 +154,7 @@ type NormalizationContext = {
   run: RunManifest
   commands: CommandManifest[]
   evidence: EvidenceItem[]
+  evidenceByPath: Map<string, EvidenceItem>
   warnings: string[]
 }
 
@@ -271,12 +273,6 @@ async function writeJson(path: string, value: unknown) {
 async function writeText(path: string, content: string) {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, content)
-}
-
-async function sha256File(path: string): Promise<string> {
-  const hash = createHash('sha256')
-  hash.update(await readFile(path))
-  return hash.digest('hex')
 }
 
 async function walkFiles(dir: string): Promise<string[]> {
@@ -428,9 +424,13 @@ function severityFromNuclei(value: string | undefined): Severity {
 }
 
 function severityFromSemgrep(value: string | undefined): Severity {
-  switch (value?.toUpperCase()) {
+  switch (value?.trim().toUpperCase()) {
+    case 'CRITICAL':
+      return 'critical'
+    case 'HIGH':
     case 'ERROR':
       return 'high'
+    case 'MEDIUM':
     case 'WARNING':
       return 'medium'
     case 'INFO':
@@ -495,13 +495,6 @@ function findingFactory(profileId: string | undefined) {
   }
 }
 
-function evidenceLookup(
-  evidence: EvidenceItem[],
-  relativePath: string,
-): EvidenceItem | undefined {
-  return evidence.find(item => item.path === relativePath)
-}
-
 function evidenceRef(
   context: NormalizationContext,
   relativePath: string,
@@ -509,7 +502,7 @@ function evidenceRef(
   jsonPointer?: string,
   line?: number,
 ): EvidenceReference {
-  const item = evidenceLookup(context.evidence, relativePath)
+  const item = context.evidenceByPath.get(relativePath)
   return {
     id: item?.id ?? 'EV-UNKNOWN',
     path: relativePath,
@@ -543,7 +536,6 @@ async function evidenceItem(
   runDir: string,
 ): Promise<EvidenceItem> {
   const relativePath = projectPath(path)
-  const info = await stat(path)
   const rawRelation = relative(join(runDir, 'raw'), path)
   const screenshotRelation = relative(join(runDir, 'raw', 'screenshots'), path)
   const kind =
@@ -570,8 +562,7 @@ async function evidenceItem(
     kind,
     path: relativePath,
     description: evidenceDescription(path, kind),
-    sha256: await sha256File(path),
-    bytes: info.size,
+    ...(await hashFile(path)),
   }
 }
 
@@ -594,16 +585,20 @@ async function collectEvidence(runDir: string): Promise<EvidenceItem[]> {
     join(runDir, 'command-manifest.json'),
     join(runDir, 'targets.txt'),
   ]
-  const rawFiles = await walkFiles(join(runDir, 'raw'))
-  const files = [...fixed, ...rawFiles]
+  const files: string[] = []
+  for (const path of fixed) {
+    if (await pathExists(path) && (await stat(path)).isFile()) files.push(path)
+  }
+  // walkFiles already excludes directories and symbolic links in raw/.
+  const paths = files.concat(await walkFiles(join(runDir, 'raw')))
   const evidence: EvidenceItem[] = []
-  for (const path of files) {
-    if (!(await pathExists(path))) continue
-    const info = await stat(path)
-    if (!info.isFile()) continue
-    evidence.push(
-      await evidenceItem(`EV-${String(evidence.length + 1).padStart(3, '0')}`, path, runDir),
-    )
+  const batchSize = 8
+  for (let start = 0; start < paths.length; start += batchSize) {
+    const batch = paths.slice(start, start + batchSize)
+    // Assign IDs by input order, even when the reads finish out of order.
+    evidence.push(...await Promise.all(batch.map((path, i) =>
+      evidenceItem(`EV-${String(start + i + 1).padStart(3, '0')}`, path, runDir),
+    )))
   }
   return evidence
 }
@@ -873,16 +868,31 @@ async function normalizeSemgrep(
   addFinding: ReturnType<typeof findingFactory>,
 ): Promise<Finding[]> {
   const rawPath = join(context.runDir, 'raw', 'semgrep.json')
-  const data = await readJsonIfExists<Record<string, unknown>>(rawPath)
-  if (!data) return []
-
   const relativePath = projectPath(rawPath)
+  let data: unknown
+  try {
+    data = await readJsonIfExists<unknown>(rawPath)
+  } catch {
+    context.warnings.push(`${relativePath}: could not read a valid Semgrep JSON document.`)
+    return []
+  }
+  if (data === undefined) return []
   const findings: Finding[] = []
-  const results = arrayValue(data, 'results').filter(isRecord)
+  if (!isRecord(data) || !Array.isArray(data.results)) {
+    context.warnings.push(`${relativePath}: Semgrep results array is missing or malformed.`)
+    return findings
+  }
+  const errors = arrayValue(data, 'errors').length
+  if (errors) context.warnings.push(`${relativePath}: Semgrep reported ${errors} analysis error(s); coverage may be incomplete.`)
+  let malformed = 0
 
-  results.forEach((result, index) => {
+  data.results.forEach((result: unknown, index: number) => {
+    if (!isRecord(result)) {
+      malformed++
+      return
+    }
     const extra = recordValue(result, 'extra')
-    const checkId = stringValue(result, 'check_id') ?? 'semgrep-rule'
+    const checkId = stringValue(result, 'check_id')
     const file = stringValue(result, 'path') ?? 'unknown file'
     const start = recordValue(result, 'start')
     const line = numberValue(start, 'line')
@@ -894,13 +904,16 @@ async function normalizeSemgrep(
 
     findings.push(
       addFinding({
-        title: `Semgrep finding: ${checkId}`,
+        title: `Semgrep finding: ${checkId ?? 'semgrep-rule'}`,
         severity,
         confidence: severity === 'info' ? 'medium' : 'high',
         status: severity === 'info' ? 'informational' : 'suspected',
         category: 'static-analysis',
         target: `${file}${line ? `:${line}` : ''}`,
         sourceTool: 'semgrep',
+        ruleId: checkId,
+        testProcess: ['Read the existing Semgrep JSON result and its reported source location.'],
+        screenshots: [],
         evidence: [
           evidenceRef(
             context,
@@ -920,6 +933,196 @@ async function normalizeSemgrep(
     )
   })
 
+  if (malformed) context.warnings.push(`${relativePath}: skipped ${malformed} malformed Semgrep result(s).`)
+  return findings
+}
+
+type SarifObject = Record<string, unknown>
+
+function indexedObject(items: unknown[], index: unknown): SarifObject | undefined {
+  if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return
+  const item = items[index]
+  return isRecord(item) ? item : undefined
+}
+
+function sarifLocation(result: SarifObject, artifacts: unknown[]): { file: string; line?: number } {
+  for (const entry of arrayValue(result, 'locations')) {
+    if (!isRecord(entry)) continue
+    const physical = recordValue(entry, 'physicalLocation')
+    const location = recordValue(physical, 'artifactLocation')
+    const artifact = indexedObject(artifacts, location?.index)
+    const uri = stringValue(location, 'uri') ?? stringValue(recordValue(artifact, 'location'), 'uri')
+    if (!uri) continue
+    // Display the reported filename only. Never open the referenced location.
+    const file = uri.split(/[?#]/, 1)[0]?.replace(/[\r\n\t]/g, ' ')
+    if (!file || (/^[a-z][\w+.-]*:/i.test(file) && !/^(?:file:|[a-z]:[\\/])/i.test(file))) continue
+    const line = numberValue(recordValue(physical, 'region'), 'startLine')
+    return { file, line: line && Number.isSafeInteger(line) && line > 0 ? line : undefined }
+  }
+  return { file: 'unknown file' }
+}
+
+function sarifRuleIndex(component: SarifObject | undefined) {
+  const rules = arrayValue(component, 'rules')
+  const byId = new Map<string, SarifObject>()
+  for (const rule of rules) {
+    if (isRecord(rule) && typeof rule.id === 'string') byId.set(rule.id, rule)
+  }
+  return { rules, byId }
+}
+
+function sarifRuleResolver(tool: SarifObject | undefined) {
+  const byName = new Map<string, ReturnType<typeof sarifRuleIndex>>()
+  const byGuid = new Map<string, ReturnType<typeof sarifRuleIndex>>()
+  function indexComponent(component: SarifObject | undefined) {
+    const rules = sarifRuleIndex(component)
+    const name = stringValue(component, 'name')
+    const guid = stringValue(component, 'guid')
+    if (name) byName.set(name, rules)
+    if (guid) byGuid.set(guid, rules)
+    return rules
+  }
+  const driver = indexComponent(recordValue(tool, 'driver'))
+  const extensions = arrayValue(tool, 'extensions').map(entry =>
+    isRecord(entry) ? indexComponent(entry) : undefined,
+  )
+  return (result: SarifObject) => {
+    const ref = recordValue(result, 'rule')
+    const component = recordValue(ref, 'toolComponent')
+    let rules: typeof driver | undefined = driver
+    if (typeof component?.index === 'number' && component.index >= 0) rules = extensions[component.index]
+    else if (typeof component?.guid === 'string') rules = byGuid.get(component.guid)
+    else if (typeof component?.name === 'string') rules = byName.get(component.name)
+    const explicitId = stringValue(result, 'ruleId') ?? stringValue(ref, 'id')
+    const rule = rules && (
+      indexedObject(rules.rules, ref?.index ?? result.ruleIndex) ?? rules.byId.get(explicitId ?? '')
+    )
+    return { id: explicitId ?? stringValue(rule, 'id'), rule }
+  }
+}
+
+function importSarifRun(
+  run: SarifObject,
+  runIndex: number,
+  source: EvidenceItem,
+  warnings: string[],
+  findings: Finding[],
+  addFinding: ReturnType<typeof findingFactory>,
+) {
+  const prefix = `${source.path} /runs/${runIndex}`
+  if (run.externalPropertyFileReferences) {
+    warnings.push(`${prefix}: external properties were not loaded; only inline results are available.`)
+  }
+  const incomplete = arrayValue(run, 'invocations').some(invocation => {
+    if (!isRecord(invocation)) return false
+    if (invocation.executionSuccessful === false) return true
+    return ['toolExecutionNotifications', 'toolConfigurationNotifications'].some(key =>
+      arrayValue(invocation, key).some(notice => isRecord(notice) && notice.level === 'error'),
+    )
+  })
+  if (incomplete) warnings.push(`${prefix}: the analyzer reported an unsuccessful invocation or an error; coverage may be incomplete.`)
+  if (!Array.isArray(run.results)) {
+    warnings.push(`${prefix}: no inline results array is available.`)
+    return
+  }
+  const tool = recordValue(run, 'tool')
+  const toolName = stringValue(recordValue(tool, 'driver'), 'name') ?? 'SARIF analyzer'
+  const resolveRule = sarifRuleResolver(tool)
+  const artifacts = arrayValue(run, 'artifacts')
+  let suppressed = 0
+  let inactive = 0
+  let malformed = 0
+  run.results.forEach((result: unknown, index: number) => {
+    if (!isRecord(result)) {
+      malformed++
+      return
+    }
+    if (arrayValue(result, 'suppressions').some(s => isRecord(s) && s.status === 'accepted')) {
+      suppressed++
+      return
+    }
+    const kind = result.kind ?? 'fail'
+    if (result.baselineState === 'absent' || kind === 'notApplicable' || kind === 'pass' || kind === 'open') {
+      inactive++
+      return
+    }
+    if (kind !== 'fail' && kind !== 'review' && kind !== 'informational') {
+      malformed++
+      return
+    }
+    const { id, rule } = resolveRule(result)
+    if (!id && !recordValue(result, 'message')) {
+      malformed++
+      return
+    }
+    const level = kind === 'fail'
+      ? result.level ?? stringValue(recordValue(rule, 'defaultConfiguration'), 'level') ?? 'warning'
+      : 'none'
+    if (level !== 'error' && level !== 'warning' && level !== 'note' && level !== 'none') {
+      malformed++
+      return
+    }
+    const severity = level === 'error' ? 'high' : level === 'warning' ? 'medium' : 'info'
+    const { file, line } = sarifLocation(result, artifacts)
+    findings.push(addFinding({
+      title: `${toolName} finding: ${id ?? 'unspecified rule'}`,
+      severity,
+      confidence: 'medium',
+      status: kind === 'review' || severity !== 'info' ? 'suspected' : 'informational',
+      category: 'static-analysis',
+      target: line ? `${file}:${line}` : file,
+      sourceTool: toolName,
+      ruleId: id,
+      evidence: [{
+        id: source.id,
+        path: source.path,
+        description: 'SARIF result',
+        jsonPointer: `/runs/${runIndex}/results/${index}`,
+        line,
+      }],
+      description: `The imported static-analysis report records a ${kind} result at level ${level}.`,
+      impact: 'The effect depends on how the reported code is used.',
+      remediation: 'Review the rule and cited location in the original report, then verify any correction against the source.',
+      references: [],
+      screenshots: [],
+      testProcess: ['Read the existing SARIF result and its inline rule and location metadata.'],
+    }))
+  })
+  if (suppressed || inactive || malformed) {
+    warnings.push(`${prefix}: skipped ${suppressed} accepted suppression(s), ${inactive} inactive result(s), and ${malformed} malformed result(s).`)
+  }
+}
+
+async function normalizeSarif(context: NormalizationContext, addFinding: ReturnType<typeof findingFactory>) {
+  const sources = context.evidence
+    .filter(item => item.kind === 'raw-output' && /\.sarif(?:\.json)?$/i.test(item.path))
+    .sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  const findings: Finding[] = []
+  const seen = new Map<string, string>()
+  for (const item of sources) {
+    const previous = seen.get(item.sha256)
+    if (previous) {
+      context.warnings.push(`${item.path}: byte-identical SARIF export already counted from ${previous}.`)
+      continue
+    }
+    let data: unknown
+    try {
+      data = await readJsonFile<unknown>(resolveProjectPath(item.path))
+    } catch {
+      context.warnings.push(`${item.path}: could not read a valid SARIF JSON document.`)
+      continue
+    }
+    if (!isRecord(data) || data.version !== '2.1.0' || !Array.isArray(data.runs)) {
+      context.warnings.push(`${item.path}: expected a SARIF 2.1.0 log with an inline runs array.`)
+      continue
+    }
+    seen.set(item.sha256, item.path)
+    data.runs.forEach((run: unknown, index: number) => {
+      if (isRecord(run)) importSarifRun(run, index, item, context.warnings, findings, addFinding)
+      else context.warnings.push(`${item.path}: skipped malformed run at /runs/${index}.`)
+    })
+  }
+  if (seen.size) context.warnings.push('Different export contents and formats are counted separately, even when they describe the same source finding.')
   return findings
 }
 
@@ -2446,6 +2649,14 @@ function commandLimitations(commands: CommandManifest[], run: RunManifest): stri
     )
   }
   for (const command of commands) {
+    if (command.tool === 'semgrep' && Array.isArray(command.argv)) {
+      const baselineIndex = command.argv.indexOf('--baseline-commit')
+      if (baselineIndex >= 0) {
+        const baseline = command.argv[baselineIndex + 1]
+        const label = baseline && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(baseline) ? ` ${baseline}` : ''
+        limitations.push(`Semgrep baseline mode only reports findings newly detected relative to the selected Git commit${label}. Existing findings may be outside this report.`)
+      }
+    }
     if (command.status === 'skipped') {
       limitations.push(
         `${command.stepId ?? 'unknown-step'} was skipped${command.reason ? `: ${command.reason}` : ''}.`,
@@ -2521,6 +2732,7 @@ async function normalizeRun(runDir: string): Promise<{
     run,
     commands,
     evidence,
+    evidenceByPath: new Map(evidence.map(item => [item.path, item])),
     warnings: [],
   }
   const addFinding = findingFactory(run.profile?.id)
@@ -2534,6 +2746,7 @@ async function normalizeRun(runDir: string): Promise<{
     ...(await normalizeBusinessLogicValidation(context, addFinding)),
     ...(await normalizePocValidationPlan(context, addFinding)),
     ...(await normalizeThreatTraceArtifact(context, addFinding)),
+    ...(await normalizeSarif(context, addFinding)),
   ]
   const screenshotRefs = screenshotEvidenceRefs(context)
   const findings = rawFindings.map(finding => ({

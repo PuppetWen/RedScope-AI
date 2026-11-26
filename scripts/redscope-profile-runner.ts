@@ -21,6 +21,7 @@ import {
   sep,
 } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateSemgrepBaseline } from './redscope-semgrep-options.ts'
 import net from 'node:net'
 import { envList, envPathFrom } from './redscope-env-config.ts'
 import {
@@ -264,6 +265,7 @@ type Options = {
   json: boolean
   confirmActive: boolean
   semgrepConfig?: string
+  semgrepBaseline?: string
 }
 
 type TargetPlan = {
@@ -319,6 +321,7 @@ Modes:
 Safety:
   --confirm-active         Required with --execute for active/restricted profiles
   --semgrep-config <path>  Local semgrep config for repo-secret-and-sast execution
+  --semgrep-baseline <sha> Compare authorized-semgrep-sast with a local Git commit
 
 Other:
   --profiles <path>        Profile registry path (default: ${defaultProfilesPath})
@@ -400,6 +403,9 @@ function parseArgs(argv: string[]): Options {
         break
       case '--semgrep-config':
         options.semgrepConfig = next
+        break
+      case '--semgrep-baseline':
+        options.semgrepBaseline = next
         break
       default:
         usage()
@@ -1343,6 +1349,8 @@ async function plannedCommandForStep(
         join(outputDir, 'semgrep.json'),
         '--metrics',
         'off',
+        '--disable-version-check',
+        ...(options.semgrepBaseline ? ['--baseline-commit', options.semgrepBaseline] : []),
         target.repositoryPath ?? cwd,
       ],
       cwd: projectPath(cwd),
@@ -10753,6 +10761,7 @@ async function runProfile(options: Options) {
   }
 
   if (!options.profileId || !options.scopePath) usage()
+  validateSemgrepBaseline(options.semgrepBaseline, options.profileId)
   const profile = findProfile(registry, options.profileId)
   const activeConfirmLevels =
     registry.policy?.requiresActiveConfirmationForLevels ?? ['active', 'restricted']
@@ -10769,6 +10778,9 @@ async function runProfile(options: Options) {
   const scope = await readJsonFile<ScopeFile>(scopePath)
   validateScope(scope, profile)
   const target = validateTarget(scope, profile, options)
+  if (options.semgrepBaseline && !target.repositoryPath) {
+    throw new Error('--semgrep-baseline requires a local repository target')
+  }
   const limits = effectiveRateLimits(scope, profile)
   const outputRoot = resolveProjectPath(
     options.outputRoot ??

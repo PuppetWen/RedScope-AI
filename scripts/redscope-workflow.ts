@@ -10,6 +10,7 @@ import {
   sep,
 } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateSemgrepBaseline } from './redscope-semgrep-options.ts'
 import { ensureRedScopeSourcesFresh } from './redscope-source-updater.ts'
 import { envPathFrom } from './redscope-env-config.ts'
 
@@ -23,6 +24,7 @@ type Options = {
   outputRoot: string
   memoryRoot: string
   semgrepConfig?: string
+  semgrepBaseline?: string
   dryRun: boolean
   execute: boolean
   confirmActive: boolean
@@ -74,6 +76,7 @@ type StageSummary = {
 
 function profileRequiresSourceCache(profileId: string | undefined): boolean {
   return (
+    profileId !== 'authorized-semgrep-sast' &&
     profileId !== 'authorized-low-impact-validator' &&
     profileId !== 'authorized-business-logic-validation' &&
     profileId !== 'authorized-stateful-business-logic-validation'
@@ -144,6 +147,7 @@ Options:
   --output-root <path>     Run output root (default: ${defaultOutputRoot})
   --memory-root <path>     Local memory root (default: ${defaultMemoryRoot})
   --semgrep-config <path>  Local semgrep config for repo-secret-and-sast execution
+  --semgrep-baseline <sha> Compare authorized-semgrep-sast with a local Git commit
   --skip-report            Do not run report normalization after profile planning/execution
   --skip-observe           Do not ingest the run into local memory
   --force                  Pass --force to the profile runner
@@ -229,6 +233,9 @@ function parseArgs(argv: string[]): Options {
         break
       case '--semgrep-config':
         options.semgrepConfig = next
+        break
+      case '--semgrep-baseline':
+        options.semgrepBaseline = next
         break
       default:
         usage()
@@ -367,6 +374,7 @@ async function runStage<T>(
 
 function validateOptions(options: Options) {
   if (!options.profileId || !options.scopePath) usage()
+  validateSemgrepBaseline(options.semgrepBaseline, options.profileId)
   const selectedTargets = [options.target, options.repository, options.artifact]
     .filter(Boolean).length
   if (selectedTargets > 1) {
@@ -404,6 +412,7 @@ function buildProfileArgs(
   if (paths.semgrepConfig) {
     args.push('--semgrep-config', projectPath(paths.semgrepConfig))
   }
+  if (options.semgrepBaseline) args.push('--semgrep-baseline', options.semgrepBaseline)
   if (options.dryRun) args.push('--dry-run')
   if (options.execute) args.push('--execute')
   if (options.confirmActive) args.push('--confirm-active')

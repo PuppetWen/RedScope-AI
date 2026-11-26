@@ -10,6 +10,7 @@ import {
   sep,
 } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateSemgrepBaseline } from './redscope-semgrep-options.ts'
 import { envPathFrom } from './redscope-env-config.ts'
 
 type TargetKind = 'target' | 'repository' | 'artifact'
@@ -25,6 +26,7 @@ type Options = {
   memoryRoot: string
   batchOutputRoot: string
   semgrepConfig?: string
+  semgrepBaseline?: string
   dryRun: boolean
   execute: boolean
   confirmActive: boolean
@@ -162,6 +164,7 @@ Workflow options:
   --memory-root <path>    Local memory root (default: ${defaultMemoryRoot})
   --batch-output <path>   Batch manifest root (default: ${defaultBatchOutputRoot})
   --semgrep-config <path> Local semgrep config forwarded to repository profiles
+  --semgrep-baseline <sha> Compare authorized-semgrep-sast with a local Git commit
   --dry-run               Validate each target without writing run directories
   --execute               Execute deterministic internal/tool-backed profile steps
   --confirm-active        Required by active/restricted profile execution
@@ -275,6 +278,9 @@ function parseArgs(argv: string[]): Options {
       case '--semgrep-config':
         options.semgrepConfig = next
         break
+      case '--semgrep-baseline':
+        options.semgrepBaseline = next
+        break
       case '--limit':
         options.limit = positiveInteger(next, '--limit')
         break
@@ -330,6 +336,10 @@ async function writeJson(path: string, value: unknown) {
 }
 
 function validateOptions(options: Options) {
+  validateSemgrepBaseline(options.semgrepBaseline, options.profileId)
+  if (options.semgrepBaseline && options.targetKind !== 'repository') {
+    throw new Error('--semgrep-baseline requires --target-kind repository in batch mode')
+  }
   if (!options.profileId || !options.scopePath || !options.targetsPath) {
     usage()
   }
@@ -397,6 +407,7 @@ function commandForTarget(
   if (paths.semgrepConfig) {
     args.push('--semgrep-config', projectPath(paths.semgrepConfig))
   }
+  if (options.semgrepBaseline) args.push('--semgrep-baseline', options.semgrepBaseline)
   if (options.dryRun) args.push('--dry-run')
   if (options.execute) args.push('--execute')
   if (options.confirmActive) args.push('--confirm-active')

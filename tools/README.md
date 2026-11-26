@@ -376,7 +376,9 @@ Delivery guarantees:
 - Creates `report-signature.json`, a local SHA-256 integrity manifest covering
   run, report, evidence, workflow, triage, reviewer notes, HTML files, optional
   PDF files, and optional trace-event files.
-- Creates `report.html` as a self-contained HTML rendering of `report.md`.
+- Creates a self-contained `report.html` with the original report, a review
+  queue ordered by triage and severity, and links to evidence metadata.
+  Unresolved evidence references are marked in the review queue.
 - Creates `report.pdf` when `--pdf` is supplied. This is a lightweight local
   PDF export of the Markdown report for reviewer packets.
 - Writes `delivery/trace-event.json` and appends a JSONL event to `--trace`
@@ -385,6 +387,19 @@ Delivery guarantees:
   attestation.
 - Does not copy raw secrets, payloads, response bodies, or full incident
   artifact contents into delivery metadata.
+
+Archive the complete run directory, including indexed raw evidence. Keep the
+delivery's bundle digest separately if you want to check against the original.
+From a source checkout, verify the run at its current location with Node.js:
+
+```bash
+node scripts/redscope-verify-delivery.mjs --run "/path/to/archived run" --json
+node scripts/redscope-verify-delivery.mjs --run "/path/to/archived run" --expect-digest "<bundle-digest>"
+```
+
+The package also exposes the same command as `redscope-verify`. The check
+covers the files listed in the integrity manifest and the evidence listed in
+its verified index. It returns exit code 0 on success and 1 on a failed check.
 
 ## Workflow command
 

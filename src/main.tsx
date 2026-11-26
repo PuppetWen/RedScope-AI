@@ -32,6 +32,7 @@ import React from 'react';
 import { getOauthConfig } from './constants/oauth.js';
 import { getRemoteSessionUrl } from './constants/product.js';
 import { getSystemContext, getUserContext } from './context.js';
+import { isAddressReviewUrl } from './utils/addressReview.js';
 import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js';
 import { addToHistory } from './history.js';
 import type { Root } from '@anthropic/ink';
@@ -744,6 +745,12 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE')
 export async function main() {
   profileCheckpoint('main_function_start');
 
+  const soleArgument = process.argv[2];
+  if (process.argv.length === 3 && soleArgument && isAddressReviewUrl(soleArgument)) {
+    process.argv.splice(2, 0, 'address-review');
+  }
+  const isAddressReview = process.argv[2] === 'address-review';
+
   // SECURITY: Prevent Windows from executing commands from current directory
   // This must be set before ANY command execution to prevent PATH hijacking attacks
   // See: https://docs.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-searchpathw
@@ -769,7 +776,7 @@ export async function main() {
   // Check for cc:// or cc+unix:// URL in argv — rewrite so the main command
   // handles it, giving the full interactive TUI instead of a stripped-down subcommand.
   // For headless (-p), we rewrite to the internal `open` subcommand.
-  if (feature('DIRECT_CONNECT')) {
+  if (feature('DIRECT_CONNECT') && !isAddressReview) {
     const rawCliArgs = process.argv.slice(2);
     const ccIdx = rawCliArgs.findIndex(a => a.startsWith('cc://') || a.startsWith('cc+unix://'));
     if (ccIdx !== -1 && _pendingConnect) {
@@ -805,7 +812,7 @@ export async function main() {
   // Handle deep link URIs early — this is invoked by the OS protocol handler
   // and should bail out before full init since it only needs to parse the URI
   // and open a terminal.
-  if (feature('LODESTONE')) {
+  if (feature('LODESTONE') && !isAddressReview) {
     const handleUriIdx = process.argv.indexOf('--handle-uri');
     if (handleUriIdx !== -1 && process.argv[handleUriIdx + 1]) {
       const { enableConfigs } = await import('./utils/config.js');
@@ -956,7 +963,7 @@ export async function main() {
   const hasInitOnlyFlag = cliArgs.includes('--init-only');
   const hasSdkUrl = cliArgs.some(arg => arg.startsWith('--sdk-url'));
   const forceInteractive = isEnvTruthy(process.env.CLAUDE_CODE_FORCE_INTERACTIVE);
-  const isNonInteractive = hasPrintFlag || hasInitOnlyFlag || hasSdkUrl || (!forceInteractive && !process.stdout.isTTY);
+  const isNonInteractive = isAddressReview || hasPrintFlag || hasInitOnlyFlag || hasSdkUrl || (!forceInteractive && !process.stdout.isTTY);
 
   // Stop capturing early input for non-interactive modes
   if (isNonInteractive) {
@@ -1078,7 +1085,7 @@ async function run(): Promise<CommanderCommand> {
 
   // Use preAction hook to run initialization only when executing a command,
   // not when displaying help. This avoids the need for env variable signaling.
-  program.hook('preAction', async thisCommand => {
+  program.hook('preAction', async (thisCommand, actionCommand) => {
     profileCheckpoint('preAction_start');
     // Await async subprocess loads started at module evaluation (lines 12-20).
     // Nearly free — subprocesses complete during the ~135ms of imports above.
@@ -1086,6 +1093,14 @@ async function run(): Promise<CommanderCommand> {
     // (applySafeConfigEnvironmentVariables → getSettingsForSource('policySettings')
     // → isRemoteManagedSettingsEligible → sync keychain reads otherwise ~65ms).
     await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
+    if (actionCommand.name() === 'address-review') {
+      const { enableConfigs } = await import('./utils/config.js');
+      const { applySafeConfigEnvironmentVariables } = await import('./utils/managedEnv.js');
+      enableConfigs();
+      applySafeConfigEnvironmentVariables();
+      stopCapturingEarlyInput();
+      return;
+    }
     profileCheckpoint('preAction_after_mdm');
     await init();
     profileCheckpoint('preAction_after_init');
@@ -4627,6 +4642,25 @@ async function run(): Promise<CommanderCommand> {
   }
 
   profileCheckpoint('run_main_options_built');
+
+  program
+    .command('address-review <url>')
+    .description('Review an address and optional page excerpt as text without visiting the address')
+    .option('--notes <path>', 'Send this local UTF-8 page excerpt to the configured model (file limit 64 KiB)')
+    .option('--model <name>', 'Override the configured model for this review')
+    .action(async (url, options) => {
+      const { runAddressReview } = await import('./cli/addressReview.js');
+      const parentModel = program.getOptionValue('model');
+      try {
+        console.log(await runAddressReview(url, {
+          notes: options.notes,
+          model: options.model ?? (typeof parentModel === 'string' ? parentModel : undefined),
+        }));
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : '地址审阅失败。');
+        process.exitCode = 1;
+      }
+    });
 
   // -p/--print mode: skip subcommand registration. The 52 subcommands
   // (mcp, auth, plugin, skill, task, config, doctor, update, etc.) are

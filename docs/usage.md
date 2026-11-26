@@ -297,6 +297,7 @@ flowchart LR
 | `redscope:evtx` | `bun run redscope:evtx -- --artifact tools/artifacts/security.evtx --json` | 本地 EVTX 元数据解析 |
 | `redscope:drafts` | `bun run redscope:drafts -- --latest --profile authorized-poc-candidate-validation --json` | 生成 scope 草稿 |
 | `redscope:deliver` | `bun run redscope:deliver -- --latest --profile baseline-url-review --status ready-for-review --reviewer "Analyst"` | 生成交付包 |
+| `redscope:verify` | `npm run redscope:verify -- --run "归档运行目录" --json` | 离线复核交付文件与索引中的证据 |
 | `redscope:publish-guard` | `bun run redscope:publish-guard` | 发布前检查 secrets 与 package 内容 |
 
 安全套件的完整策略和高级示例见 [tools/README.md](../tools/README.md)。
@@ -508,6 +509,109 @@ bun run redscope:batch -- --profile baseline-url-review --scope tools/authorized
 ```bash
 bun run redscope:deliver -- --latest --profile baseline-url-review --status ready-for-review --reviewer "Security Team" --pdf
 ```
+
+在运行目录中打开 `delivery/report.html`。页面会先列出待审发现，同组内按严重程度排序。点击证据编号可查看路径、字节数和 SHA-256。行号和 JSON 指针标在引用旁，无法对应索引的引用会单独标明。
+
+人工分诊可使用 `--triage-file` 传入以下格式的 JSON。将示例 ID 替换为本次 `findings.json` 中的真实 ID。也可以使用带 `id` 的数组。状态、负责人或备注格式有误，或 ID 重复、冲突、在本次报告中找不到时，命令会在写入交付文件前报错。
+
+```json
+{
+  "findings": {
+    "RS-EXAMPLE-001": {
+      "triageStatus": "fixed",
+      "owner": "平台组",
+      "note": "已核对修复记录。"
+    }
+  }
+}
+```
+
+归档时复制**整个运行目录**（含 `raw/` 中已索引的文件），另存交付时输出的 `bundleDigest`。下例使用 PowerShell，可将路径改为原运行目录或归档副本。
+
+```powershell
+$runDir = 'E:\Archives\review-001'
+node scripts/redscope-verify-delivery.mjs --run $runDir --json
+# 与交付时独立保存的 64 位十六进制摘要比对
+node scripts/redscope-verify-delivery.mjs --run $runDir --expect-digest '<bundleDigest>'
+```
+
+校验命令逐一检查 `report-signature.json` 列出的交付文件及 `evidence-index.json` 引用的文件。成功时退出码为 `0`，文件缺失、更改或清单无效时为 `1`。省略 `--expect-digest` 时，以归档内的清单为校验基准。
+
+### 输入地址生成内容说明
+
+在命令行给出一个完整的 HTTP 或 HTTPS 地址，RedScope 会向当前配置的模型请求一份中文说明。例如：
+
+```powershell
+redscope 'https://portal.example:8443/help'
+```
+
+在已构建的源码目录，可以直接用 `node .\dist\cli-node.js 'https://portal.example:8443/help'`。在空白本地交互会话中，第一次提交单独一个完整网址也会进入地址说明模式。
+
+只有地址时，可确认的材料包括协议、主机、端口和路径。如果还想归纳实际页面的用途或正文，可以显式提供一份本地 UTF-8 文字摘录：
+
+```powershell
+redscope address-review 'https://portal.example:8443/help' --notes .\page-notes.txt
+```
+
+该命令只向模型提供脱敏后的地址及选定摘录，地址中的账号、密码、查询串和片段会被移除。主机和路径会保留；摘录文件上限为 64 KiB，最多取前 6,000 个 Unicode 码点。此模式不访问目标网站。模型连接失败时，终端会标明来源并显示本地解析结果。已在交互会话中时，可以输入 `/address-review https://portal.example:8443/help`。
+
+### 源码审计、检出质量与模型交接
+
+**只审查相对基线新增的 Semgrep 结果。** 在 `authorized-semgrep-sast` 中传入 `--semgrep-baseline` 和本地 Git 仓库中的完整提交 SHA。以下示例先查看执行计划，`$repo` 和授权文件中的仓库路径应一致。
+
+```powershell
+$repo = 'path/to/authorized-repo'
+$base = git -C $repo rev-parse 'HEAD~1'
+bun scripts/redscope-profile-runner.ts --profile authorized-semgrep-sast --scope tools/scope.json --repository $repo --semgrep-config "$repo/.semgrep.yml" --semgrep-baseline $base --dry-run --json
+```
+
+基线模式适合审阅代码变更。衡量整个仓库的规则覆盖或对比全量标签时，应使用全量运行。Semgrep 要求可用的本地基线提交及满足要求的工作区状态；报告会记录基线模式的覆盖范围。[Semgrep CLI 参考](https://docs.semgrep.dev/cli-reference)
+
+将已有审计工具导出的 SARIF 2.1.0 文件放到该次运行的 `raw/` 下，扩展名可为 `.sarif` 或 `.sarif.json`。运行目录需有 RedScope 的 `run.json`。以下命令读取本地文件，适用于桌面审阅和 CI 导出物。
+
+```powershell
+$runDir = 'tools/outputs/authorized-semgrep-sast/<run-id>'
+bun scripts/redscope-report-pipeline.ts --run $runDir
+node scripts/redscope-fix-brief.mjs --run $runDir --max-chars 8000 --out fix-page.json
+```
+
+报告读取 SARIF 内联结果，将规则、源码位置及指回原始结果的 JSON 指针写入 `findings.json`。已明确接受的抑制和基线中已消失的结果会跳过；解析问题记录在报告警告中。相同字节的 SARIF 副本只导入一次。不同工具或原生 Semgrep JSON 与 SARIF 分别保留各自的记录。[SARIF 2.1.0 格式](https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html)
+
+**和模型交接。** 打开 `fix-page.json`，审阅后将内容交给所选模型。每页取自同一份人工分诊前的静态分析快照，包含任务、输出格式和按严重程度排序的发现摘要。预算以 Unicode 码点计，实际 token 消耗依模型而异。`pagination.nextOffset` 有值时，用该值加上 `--offset`，将下一页存入另一个新文件。不同页分别检查。
+
+模型应原样回传本页的 `briefId`，并给每条发现一个答复。能定位修改时填写 `repairs` 中的修改建议和离线验收方法；缺少上下文时，在 `needsContext` 中写明具体需要哪段代码或配置信息。将回复保存为 UTF-8 的 `reply.json` 后执行：
+
+```powershell
+node scripts/redscope-check-fix-reply.mjs --brief fix-page.json --reply reply.json
+```
+
+可用 `--goal` 写明本次源码审阅要回答的问题及验收条件。例如，审阅配置加载日志时，可以要求模型分别说明已有证据和需要补看的源码：
+
+```powershell
+$goal = '检查配置加载时日志是否可能暴露密钥。用中文给出本地验收方法；证据不足时，请指出需要哪段源码。'
+node scripts/redscope-fix-brief.mjs --run $runDir --goal $goal --out config-log-review.json
+```
+
+交接页把目标保存在 `reviewGoal` 中。目标计入每页字符预算；翻页时沿用相同的 `--goal`。同一批发现换一个目标后，`briefId` 会改变，检查器可据此识别误用的旧回复。
+
+检查器接受纯 JSON 或单一 Markdown JSON 代码块。成功退出码为 0，格式、页面标识或发现 ID 有误时为 1。修复内容本身仍由审阅人结合源码和测试判断。交接文件的生成和回复检查均在本地完成。
+
+**衡量检出效果。** 在固定版本的源码上人工标注已知阳性和阴性位置，保存为 UTF-8 的 `labels.json`。每项用 `sourceTool`、`ruleId` 和带行号的 `target` 对齐，拼写和大小写与工具输出一致。将相同标签分别用于两次运行，即可比较规则变更前后的结果。
+
+```json
+{
+  "cases": [
+    { "sourceTool": "semgrep", "ruleId": "local.config-review", "target": "src/sample.ts:12", "expected": true },
+    { "sourceTool": "semgrep", "ruleId": "local.config-review", "target": "src/control.ts:8", "expected": false }
+  ]
+}
+```
+
+```powershell
+node scripts/redscope-score-audit.mjs --run $runDir --labels labels.json
+```
+
+`recall` 表示标注阳性中被发现的比例，`precision` 表示标注范围内命中结果中真阳性的比例。分母为零时输出 `null`。重复命中只计一次，未标注的命中和缺失规则或行号的结果单独统计。评分只代表这组标签。
 
 ## 开发流程
 

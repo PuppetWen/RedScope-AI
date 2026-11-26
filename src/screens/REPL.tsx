@@ -117,9 +117,12 @@ import {
   type Command,
   type CommandResultDisplay,
   type ResumeEntrypoint,
+  findCommand,
   getCommandName,
   isCommandEnabled,
 } from '../commands.js';
+import addressReviewCommand from '../commands/address-review.js';
+import { isAddressReviewUrl } from '../utils/addressReview.js';
 import type { PromptInputMode, QueuedCommand, VimMode } from '../types/textInputTypes.js';
 import {
   MessageSelector,
@@ -4038,6 +4041,17 @@ export function REPL({
         return;
       }
 
+      // A lone address in an empty local session uses the same cancellable command as /address-review.
+      if (
+        submitCount === 0 && messagesRef.current.length === 0 &&
+        inputMode === 'prompt' && !isLoading && !activeRemote.isRemoteMode &&
+        !speculationAccept && !options?.fromKeybinding && !ideSelection &&
+        Object.keys(pastedContents).length === 0 && isAddressReviewUrl(input) &&
+        findCommand('address-review', commands) === addressReviewCommand
+      ) {
+        input = `/address-review ${input.trim()}`;
+      }
+
       // Handle immediate commands - these bypass the queue and execute right away
       // even while RedScope is processing. Commands opt-in via `immediate: true`.
       // Commands triggered via keybindings are always treated as immediate.
@@ -4217,8 +4231,11 @@ export function REPL({
       // so notifications and already-queued user input won't be added to history here.
       // Skip history for keybinding-triggered commands (user didn't type the command).
       if (!options?.fromKeybinding) {
+        const hideAddress = inputMode === 'prompt' && /^\/address-review(?:\s|$)/.test(input.trimStart())
+          && findCommand('address-review', commands) === addressReviewCommand;
+        const historyInput = hideAddress ? '/address-review' : input;
         addToHistory({
-          display: speculationAccept ? input : prependModeCharacterToInput(input, inputMode),
+          display: speculationAccept ? input : prependModeCharacterToInput(historyInput, inputMode),
           pastedContents: speculationAccept ? {} : pastedContents,
         });
         // Add the just-submitted command to the front of the ghost-text
@@ -4445,6 +4462,7 @@ export function REPL({
       isLoading,
       isExternalLoading,
       inputMode,
+      submitCount,
       goalInputPending,
       commands,
       setInputValue,

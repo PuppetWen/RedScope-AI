@@ -2,256 +2,192 @@
 
 English | [中文](README.md)
 
-[![license: Anti 996](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)
-[![link: 996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
+[![License: Anti 996](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)
+[![996.ICU](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
 [![npm](https://img.shields.io/npm/v/@redscope-ai/redscope?label=npm)](https://www.npmjs.com/package/@redscope-ai/redscope)
-[![issues](https://img.shields.io/github/issues/PuppetWen/RedScope-AI?label=issues)](https://github.com/PuppetWen/RedScope-AI/issues)
-[![stars](https://img.shields.io/github/stars/PuppetWen/RedScope-AI?label=stars)](https://github.com/PuppetWen/RedScope-AI/stargazers)
+[![Issues](https://img.shields.io/github/issues/PuppetWen/RedScope-AI?label=issues)](https://github.com/PuppetWen/RedScope-AI/issues)
+[![Stars](https://img.shields.io/github/stars/PuppetWen/RedScope-AI?label=stars)](https://github.com/PuppetWen/RedScope-AI/stargazers)
 
-RedScope AI is a security-focused AI CLI for penetration testing, asset reconnaissance, threat tracing, and red-team orchestration. It is built with Bun, TypeScript, React/Ink, MCP tooling, multiple model providers, plugins, a self-hostable remote-control server, and a controlled security workflow suite.
-
-> Use RedScope AI only on targets, assets, logs, and repositories you are authorized to test. The security-suite workflow is designed around scope files, approvals, rate limits, evidence handling, and auditable reporting.
+RedScope AI is a terminal assistant for security reviewers. Use it to explain an address or a page excerpt, review a local codebase with a configured model, or turn analyzer output into a report that another reviewer can check against the original evidence.
 
 ## Contents
 
-- [What It Does](#what-it-does)
-- [1.0.7 Highlights](#107-highlights)
-- [Install](#install)
-- [Model Configuration](#model-configuration)
+- [Capabilities](#capabilities)
+- [Latest source changes](#latest-source-changes)
+- [Installation](#installation)
+- [Model configuration](#model-configuration)
 - [Usage](#usage)
-- [Security Workflow](#security-workflow)
-- [Test Example Screenshots](#test-example-screenshots)
-- [Architecture Flow](#architecture-flow)
-- [Tech Stack](#tech-stack)
+- [Review workflow](#review-workflow)
+- [Example screenshots](#example-screenshots)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
 - [Documentation](#documentation)
 - [Sponsor](#sponsor)
 
-## What It Does
+## Capabilities
 
-- Interactive AI terminal assistant: `redscope`
-- Headless and pipeline mode: `redscope -p "..." --output-format json`
-- Multi-provider model runtime: Anthropic, OpenAI-compatible endpoints, Gemini, Grok, Bedrock, Vertex, Foundry
-- MCP extension layer: stdio, SSE, HTTP, WebSocket, plugin-provided MCP, Chrome and Computer Use integrations
-- Security workflow suite: controlled tool installation, scope validation, profile planning/execution, report normalization, observability memory, delivery packages
-- Remote control: self-hosted Remote Control Server plus ACP/Bridge-related integrations
-- Extensibility: plugin marketplace, custom agents, slash commands, hooks, layered settings
+| Task | What RedScope provides |
+| --- | --- |
+| Work in a terminal or CI | Interactive sessions, piped input, and headless output in text, JSON, or streaming JSON. |
+| Connect a model | Adapters for Anthropic, OpenAI-compatible services, Gemini, Grok, and supported cloud providers. |
+| Review a security assessment | Scope and approval records, normalized findings, an evidence index, and reports for reviewers. Use assessment profiles only for systems and repositories you have permission to assess. |
+| Extend a workspace | MCP servers, plugins, hooks, custom agents, slash commands, and an optional self-hosted remote-control interface. |
 
-## 1.0.7 Highlights
+## Latest source changes
 
-- Added an entry-screen status HUD for Goal/Autonomy, active targets, recon findings, egress IPs, PoC references, first-run setup, and Nuclei readiness. It automatically disappears once a real conversation begins.
-- Improved responsive terminal rendering: narrow windows wrap complete values, medium windows use a compact view, and wide windows use a detailed two-column layout.
-- Expanded Goal mode and autonomy visibility, including engagement, egress, PoC, and first-run sections in `autonomy status --deep`.
-- Added authorized egress/public proxy pools, technology fingerprint and n-day reference capture, a scope-gated PoC reference catalog, Nuclei detection/setup, and evidence-based verification helpers.
-- API failures now render a readable summary while preserving the complete error in verbose and transcript views.
-- Restored health and Node/Bun production smoke commands, strengthened bundle integrity checks, and fixed published-package runtime dependency compatibility.
+These features are available in this checkout. The npm badge above tracks the separately published package.
 
-## Install
+- **Address summaries.** A full HTTP or HTTPS address opens a text-only review. You can attach a page excerpt when you want the model to discuss actual content. The terminal identifies locally generated output if the provider cannot supply a response.
+- **Static analysis imports.** A report can combine native Semgrep JSON with inline SARIF 2.1.0 results from tools such as CodeQL. Findings keep their rule, source location, and a reference back to the raw result. A Semgrep baseline commit can limit a review to new findings.
+- **Measured detection quality.** Compare runs against the same labeled source locations and see precision, recall, and unmatched results. These scores describe the labeled cases. A baseline run and a full run cover different sets of findings.
+- **Model handoff.** Export static findings in pages with a character budget and a review goal. A local checker matches each model reply to its page and flags missing or unexpected finding IDs.
+- **Evidence review.** RedScope hashes evidence files in parallel batches while preserving their index order. The HTML report links findings to evidence entries and marks missing references. After archiving an entire run, a reviewer can verify the report files and indexed evidence against their recorded SHA-256 digests.
 
-Requirements:
+## Installation
 
-- Node.js 18+ and npm for the default `redscope` entry
-- Bun 1.2+ for source development or the `redscope-bun` entry
+For the published CLI, install with npm using Node.js 18 or later.
 
-```bash
-npm i -g @redscope-ai/redscope
+```sh
+npm install --global @redscope-ai/redscope
 redscope --version
 ```
 
-When developing or debugging this repository from source, install dependencies and build with Bun:
+For the latest source features, clone the repository with Git and build it with Bun 1.2 or later and Node.js 18 or later. The examples below use the resulting local build.
 
-```bash
+```sh
+git clone https://github.com/PuppetWen/RedScope-AI.git
+cd RedScope-AI
 bun install
 bun run build
+node dist/cli-node.js --version
 ```
 
-Development mode:
+## Model configuration
 
-```bash
-bun run dev
-bun run dev:inspect
-```
+Copy the example to `%USERPROFILE%\.redscope\env.config` on Windows or `~/.redscope/env.config` on macOS and Linux. Choose one provider preset. Environment variables set in the current shell take precedence. [Configuration template](env.config.example)
 
-Common checks:
-
-```bash
-bun run typecheck
-bun test
-bun run test:all
-bun run health
-bun run test:production:offline
-```
-
-## Model Configuration
-
-RedScope recommends storing model endpoints, API keys, and default model IDs in the user-level `env.config` file:
-
-- Windows: `%USERPROFILE%\.redscope\env.config`
-- macOS/Linux: `~/.redscope/env.config`
-
-This repository includes [env.config.example](env.config.example). Copy it to your user config directory and fill in only one provider preset. Shell environment variables override `env.config` for the current process.
-
-OpenAI-compatible endpoint:
+For an OpenAI-compatible endpoint, replace the example URL, key, and model ID with the values from your provider.
 
 ```dotenv
 REDSCOPE_MODEL_PROVIDER=openai
-REDSCOPE_BASE_URL=https://api.openai.com/v1
-REDSCOPE_API_KEY=your-redscope-api-key
-REDSCOPE_MODEL=gpt-4.1
+REDSCOPE_BASE_URL=https://provider.example/v1
+REDSCOPE_API_KEY=your-api-key
+REDSCOPE_MODEL=your-model-id
 ```
-
-DeepSeek:
-
-```dotenv
-REDSCOPE_MODEL_PROVIDER=deepseek
-DEEPSEEK_API_KEY=your-deepseek-api-key
-DEEPSEEK_MODEL=deepseek-chat
-```
-
-Gemini:
-
-```dotenv
-REDSCOPE_MODEL_PROVIDER=gemini
-GEMINI_API_KEY=your-gemini-key
-GEMINI_MODEL=gemini-2.5-pro
-```
-
-See the [usage guide](docs/usage.md#配置文件) for more configuration files and variables.
 
 ## Usage
 
-Start an interactive session:
+Start a terminal session, request a JSON result, or inspect the configured MCP connections.
 
-```bash
+```sh
 redscope
-```
-
-Pass a prompt directly:
-
-```bash
-redscope "Review this repository for security risks"
-```
-
-Run in pipe mode:
-
-```bash
-echo "Summarize package.json scripts" | redscope -p
-redscope -p "Return a JSON summary" --output-format json
-```
-
-Select a model and permission mode:
-
-```bash
-redscope --model sonnet --permission-mode acceptEdits
-redscope -p "Generate release notes" --allowedTools "Read,Grep,Glob"
-```
-
-MCP examples:
-
-```bash
+redscope -p "Summarize this repository's test scripts" --output-format json
 redscope mcp list
-redscope mcp add my-server npx -- -y @my-org/mcp-server
-redscope mcp remove my-server
 ```
 
-Authentication:
+To review an address with the source build, pass the full URL as the only argument. To discuss the page text, save an excerpt in a local UTF-8 file and pass it with `--notes`.
 
-```bash
-redscope auth login
-redscope auth status --text
-redscope auth logout
+```powershell
+node dist/cli-node.js 'https://portal.example:8443/help'
+node dist/cli-node.js address-review 'https://portal.example:8443/help' --notes .\page-notes.txt
 ```
 
-For the full command reference, see [docs/usage.md](docs/usage.md).
+The request asks the configured model for a short explanation in Chinese. RedScope sends the scheme, host, port, path, and any supplied excerpt. It strips URL credentials, query parameters, and fragments. The target receives no request. The command accepts notes up to 64 KiB and includes up to 6,000 Unicode code points. If the request times out, fails, or the provider declines it, the CLI labels the local fallback.
 
-## Security Workflow
+In a fresh local interactive session, submit a URL on its own. In an ongoing session, use `/address-review https://portal.example:8443/help`.
 
-The RedScope security workflow follows an authorize, plan, execute, report, and deliver flow. Published-package users can start the workflow directly with `redscope`; by default, keep the request to planning and low-impact analysis, not active scanning. Active or restricted testing must explicitly state the authorized scope, test window, and execution boundaries, then require human confirmation.
+## Review workflow
 
-```bash
-redscope "List the RedScope security assessment profiles and explain the authorization requirements for each one"
-redscope "Using tools/authorized-scope.example.json, create a baseline-url-review security assessment plan for https://www.example.com/ without active scanning"
-redscope "Summarize the latest baseline-url-review assessment into a security report, evidence index, and remediation plan"
+### Prepare a report from existing results
+
+Start from an existing RedScope run with a `run.json` file. To include results from another analyzer, copy its `.sarif` or `.sarif.json` files into the run’s `raw/` directory. Replace `<run-id>` with the actual run directory. The commands read local artifacts.
+
+```powershell
+$runDir = 'tools/outputs/authorized-semgrep-sast/<run-id>'
+bun scripts/redscope-report-pipeline.ts --run $runDir
+bun scripts/redscope-delivery.ts --run $runDir --status ready-for-review --reviewer "Analyst"
+node scripts/redscope-verify-delivery.mjs --run $runDir --json
 ```
 
-Source developers who need deterministic local run/report/memory artifacts can use the `bun run redscope:*` script commands in [docs/usage.md](docs/usage.md#安全套件配置).
+Open `delivery/report.html` to review findings and evidence references, or use `findings.json` for programmatic access. To check an archive, copy the entire run, including `raw/`. Keep the `bundleDigest` printed at delivery separately and pass it to the verifier with `--expect-digest` when checking that copy.
 
-```mermaid
-flowchart LR
-  A["Scope / Rules of Engagement"] --> B["Profile Selection"]
-  B --> C["Plan Only by Default"]
-  C --> D{"--execute?"}
-  D -- "No" --> E["Run Artifacts"]
-  D -- "Yes + Confirmation" --> F["Controlled Tool Execution"]
-  F --> E
-  E --> G["Report Pipeline"]
-  G --> H["Observability Memory"]
-  G --> I["Delivery Package"]
+### Send a page of findings to a model
+
+The brief generator reads the normalized static findings before manual triage. Choose a review goal and a new output filename.
+
+```powershell
+node scripts/redscope-fix-brief.mjs --run $runDir --goal "Check whether logs expose credentials and propose local acceptance tests" --max-chars 8000 --out fix-page.json
 ```
 
-## Test Example Screenshots
+Review the page and give it to your chosen model. The model returns the page’s `briefId` and one answer per finding, either a proposed repair and acceptance check in `repairs` or a request for specific source context in `needsContext`. Save its reply as `reply.json`.
 
-These examples show the terminal experience for authorization confirmation, target identification, and security assessment report output.
+```powershell
+node scripts/redscope-check-fix-reply.mjs --brief fix-page.json --reply reply.json
+```
 
-> Target addresses and sensitive details in the screenshots are redacted.
+The checker validates the structure and finding IDs. A reviewer tests the proposed fixes against the source. If `pagination.nextOffset` has a value, use it with `--offset`, keep the same review goal, and write the next page to a new file.
 
-![RedScope AI authorization confirmation example](docs/images/redscope-security-chat.png)
+### Compare detection results
 
-![RedScope AI Spring Boot Admin security assessment report example](docs/images/redscope-security-report-sba.png)
+Label known positive and negative cases on a fixed source revision. Each label includes `sourceTool`, `ruleId`, the file and line in `target`, and a Boolean `expected`. Run the scorer on each report with the same label file.
 
-![RedScope AI Druid monitoring panel risk finding example](docs/images/redscope-security-report-druid.png)
+```powershell
+node scripts/redscope-score-audit.mjs --run $runDir --labels labels.json
+```
 
-## Architecture Flow
+Recall counts the fraction of labeled positives found. Precision counts the fraction of positive predictions that are correct within the labeled set. Duplicate matches count once. The scorer counts unlabeled hits separately and returns `null` for a metric with a zero denominator. [Label format and examples (Chinese)](docs/usage.md#源码审计检出质量与模型交接)
+
+## Example screenshots
+
+These examples from earlier assessments show the terminal and report formats. Target details have been redacted.
+
+![Terminal session showing an authorization check](docs/images/redscope-security-chat.png)
+
+![Example assessment report for Spring Boot Admin](docs/images/redscope-security-report-sba.png)
+
+![Example finding from a Druid monitoring panel review](docs/images/redscope-security-report-druid.png)
+
+## Architecture
 
 ```mermaid
 flowchart TD
-  U["User / CI / Pipe"] --> CLI["src/entrypoints/cli.tsx"]
-  CLI --> MAIN["src/main.tsx Commander CLI"]
-  MAIN --> REPL["React Ink REPL"]
-  MAIN --> HEADLESS["Print / JSON / Stream JSON"]
-  REPL --> ENGINE["QueryEngine"]
-  HEADLESS --> ENGINE
-  ENGINE --> API["Provider Adapter"]
-  API --> P1["Anthropic"]
-  API --> P2["OpenAI Compatible"]
-  API --> P3["Gemini / Grok / Cloud"]
-  ENGINE --> TOOLS["Builtin Tools + MCP Tools"]
-  TOOLS --> FILES["Workspace Files"]
-  TOOLS --> SHELL["Shell / PowerShell"]
-  TOOLS --> MCP["MCP Servers / Plugins"]
+  CLI["RedScope CLI"] --> Session["Interactive session or headless prompt"]
+  CLI --> Address["Address review"]
+  Session --> Engine["Query engine"]
+  Engine --> Adapter["Model provider adapter"]
+  Engine --> Tools["Workspace tools and MCP servers"]
+  Address --> Adapter
+  Raw["Run manifest and raw analyzer output"] --> Report["Report pipeline"]
+  Report --> Findings["Findings and evidence index"]
+  Findings --> Brief["Static findings brief"]
+  Brief --> Reply["Reply checker"]
+  Findings --> Delivery["HTML report and integrity manifest"]
+  Delivery --> Verify["Offline verifier"]
 ```
 
-## Tech Stack
+## Tech stack
 
-- Runtime: Node.js 18+ by default, with Bun 1.2+ as an alternative/source runtime
-- Language: TypeScript, TSX, ESM
-- CLI: Commander.js
-- Terminal UI: React 19 + Ink fork
-- Build: Bun.build, optional Vite pipeline
-- Test: `bun:test`
-- Lint/Format: Biome
-- Providers: Anthropic SDK, OpenAI-compatible Chat Completions, Gemini, Grok, AWS Bedrock, Google Vertex, Azure Foundry
-- Extensibility: MCP, plugins, custom agents, hooks, slash commands
-- Remote UI: React + Vite + Radix UI in `packages/remote-control-server`
-- Egress IP rotation: configure authorized nodes in `~/.redscope/authorized-egress.referee-provided.json`, or explicitly enable the first-run proxy pool. Test steps can rotate when a node fails or is rate-limited.
+| Component | Implementation |
+| --- | --- |
+| Runtime and build | Node.js, Bun, TypeScript, and ESM |
+| Terminal | Commander.js and React 19 with an Ink fork |
+| Extensions | MCP, plugins, hooks, and custom agents |
+| Remote interface | React, Vite, and Radix UI |
+| Development | `bun:test` and Biome |
 
 ## Documentation
 
-- [Usage Guide](docs/usage.md)
-- [Tools Security Suite](tools/README.md)
-- [Self-Hosted Remote Control](docs/features/remote-control-self-hosting.md)
-- [MCP Configuration](docs/extensibility/mcp-configuration.mdx)
-- [Permission Model](docs/safety/permission-model.mdx)
-- Fix List and Goal Mode: [Chinese](docs/fix-list-goal-mode.zh.md) / [English](docs/fix-list-goal-mode.en.md)
-- [External Dependencies](docs/external-dependencies.md)
+- [Usage and configuration guide (Chinese)](docs/usage.md)
+- [Security workflow tools](tools/README.md)
+- [Self-hosted remote control](docs/features/remote-control-self-hosting.md)
+- [MCP configuration](docs/extensibility/mcp-configuration.mdx)
+- [Permission model](docs/safety/permission-model.mdx)
+- [Fix list and goal mode](docs/fix-list-goal-mode.en.md)
+- [External dependencies](docs/external-dependencies.md)
 
 ## Sponsor
 
-If RedScope AI saves you time, you can support ongoing maintenance:
-
-- GitHub Sponsors: [github.com/sponsors/PuppetWen](https://github.com/sponsors/PuppetWen)
-- Issues / Stars: [open an issue](https://github.com/PuppetWen/RedScope-AI/issues) or star the repository
-
-WeChat / Alipay tips:
+You can support maintenance through [GitHub Sponsors](https://github.com/sponsors/PuppetWen), WeChat, or Alipay. To report a problem or suggest a change, [open an issue](https://github.com/PuppetWen/RedScope-AI/issues).
 
 | WeChat | Alipay |
 | --- | --- |

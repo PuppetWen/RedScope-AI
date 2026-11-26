@@ -1,6 +1,6 @@
 # RedScope AI
 
-[English](README.en.md) | 中文
+[English](README.en.md) | **中文**
 
 [![license: Anti 996](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)
 [![link: 996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
@@ -8,251 +8,153 @@
 [![issues](https://img.shields.io/github/issues/PuppetWen/RedScope-AI?label=issues)](https://github.com/PuppetWen/RedScope-AI/issues)
 [![stars](https://img.shields.io/github/stars/PuppetWen/RedScope-AI?label=stars)](https://github.com/PuppetWen/RedScope-AI/stargazers)
 
-RedScope AI 是一个面向安全团队、渗透测试、资产侦察、威胁追踪和红队编排的 AI CLI。它基于 Bun、TypeScript、React/Ink 和 MCP 工具生态构建，提供交互式终端助手、非交互式管道模式、多模型 Provider、插件系统、远程控制服务和一套受控的安全工作流脚本。
-
-> 仅在你拥有授权的目标、资产、日志或代码仓库上使用 RedScope AI。项目内置的安全套件强调 scope、审批、速率限制、证据留存和可审计流程，不鼓励也不支持未授权扫描。
+RedScope AI 是面向开发者和安全团队的终端助手。你可以用它在终端里审查代码、解释网址、整理静态分析结果，再把发现和原始证据交给同事复核。它支持交互会话、脚本调用和多种模型服务。
 
 ## 目录
 
-- [项目能力](#项目能力)
-- [1.0.7 更新重点](#107-更新重点)
-- [快速安装](#快速安装)
-- [配置模型](#配置模型)
-- [基本使用](#基本使用)
-- [安全工作流](#安全工作流)
-- [测试示例截图](#测试示例截图)
-- [项目流程](#项目流程)
-- [技术栈](#技术栈)
-- [文档](#文档)
-- [赞助打赏](#赞助打赏)
+[项目能力](#项目能力) · [本次源码更新](#本次源码更新) · [快速安装](#快速安装) · [配置模型](#配置模型) · [基本使用](#基本使用) · [审阅工作流](#审阅工作流) · [示例截图](#示例截图) · [项目流程](#项目流程) · [技术栈](#技术栈) · [文档](#文档) · [赞助打赏](#赞助打赏)
 
 ## 项目能力
 
-- 交互式 AI 编程与安全分析终端：`redscope`
-- 管道/自动化输出：`redscope -p "..." --output-format json`
-- 多 Provider：Anthropic、OpenAI 兼容端点、Gemini、Grok、Bedrock、Vertex、Foundry
-- MCP 扩展：stdio、SSE、HTTP、WebSocket、插件内置 MCP、Chrome/Computer Use 集成
-- 安全工作流：工具安装、scope 校验、profile 计划/执行、报告归一化、观测记忆、交付包
-- 远程控制：自托管 Remote Control Server 和 ACP/Bridge 相关能力
-- 插件与 Agent：插件 marketplace、自定义 agent、slash command、hooks、settings 分层配置
+| 要完成的工作 | 对应入口 |
+| --- | --- |
+| 在终端审查本地代码，或把摘要交给 CI | `redscope` 开启交互会话，`-p` 和 `--output-format json` 提供脚本输出 |
+| 选择模型服务 | 支持 Anthropic、OpenAI 兼容端点、Gemini、Grok，以及 Bedrock、Vertex 和 Foundry 等云端配置 |
+| 与同事复核授权项目 | 保存范围、运行记录、归一化报告和证据引用，自托管远程控制服务可连接终端会话 |
+| 接入团队工具 | 通过 MCP 服务、插件、自定义命令、Agent 和 hooks 扩展终端 |
 
-## 1.0.7 更新重点
+## 本次源码更新
 
-- 新增入口状态 HUD：集中展示 Goal/Autonomy、活动目标、侦察发现、出口 IP、PoC 引用、首次设置和 Nuclei 状态；进入界面时显示，正式对话开始后自动隐藏。
-- 改进小窗口布局：窄终端改为完整换行展示，中等宽度使用紧凑视图，宽终端使用双栏详细视图。
-- 完善 Goal 模式与自动化状态：`/goal` 任务、持续运行状态以及 `autonomy status --deep` 中的 engagement、egress、PoC 和 first-run 信息更清晰。
-- 增加授权出口 IP 池、公共代理池、技术指纹与 n-day 引用捕获、PoC 引用目录、Nuclei 安装检测及证据化验证辅助能力。
-- API 失败现在显示可读摘要；原始错误仍可在详细模式和 transcript 中查看。
-- 补齐 `health`、Node/Bun 生产冒烟测试与 bundle 完整性检查，并修复发布包的运行时依赖兼容问题。
+| 改动 | 对使用者的影响 |
+| --- | --- |
+| 输入网址即可生成中文说明 | 地址审阅仅解析输入，并向配置的模型发起一轮无工具的文本请求，不访问目标网站。模型拒绝、超时或没有返回可用文本时，终端会标明原因并显示本地基础说明。 |
+| 用同一份报告审阅静态分析结果 | 可导入 Semgrep 原生 JSON 和 SARIF 2.1.0，按规则、源码位置和原始证据复核发现。审查代码变更时，可指定本地 Git 提交作为 Semgrep 基线，只看新增发现。索引会并行计算证据文件的摘要。 |
+| 为模型生成有字数上限的交接页 | 每页附带审阅目标、证据引用和发现 ID。模型可逐项给出修复建议或说明缺少的材料，回复检查器会标出遗漏和页标识不匹配。 |
+| 分诊、离线交付与效果评估 | HTML 报告优先展示待审项，点击证据编号可定位文件。可用独立保存的摘要校验归档，也可用人工标注的样本计算精确率和召回率。 |
 
 ## 快速安装
 
-要求：
+**使用 npm 已发布版**需要 Node.js 18 或更高版本。顶部的 npm 徽章显示注册表当前发布的版本。
 
-- Node.js 18+ 和 npm（默认 `redscope` 入口）
-- Bun 1.2+（源码开发或 `redscope-bun` 入口）
-
-```bash
-npm i -g @redscope-ai/redscope
+```sh
+npm install -g @redscope-ai/redscope
 redscope --version
 ```
 
-从源码开发或调试本仓库时，再使用 Bun 安装依赖和构建：
+**使用本页介绍的最新源码功能**需要 Git、Node.js 18+ 和 Bun 1.2+。在源码目录直接运行构建出的 CLI 即可。
 
-```bash
+```sh
+git clone https://github.com/PuppetWen/RedScope-AI.git
+cd RedScope-AI
 bun install
 bun run build
-```
-
-开发模式：
-
-```bash
-bun run dev
-bun run dev:inspect
-```
-
-常用检查：
-
-```bash
-bun run typecheck
-bun test
-bun run test:all
-bun run health
-bun run test:production:offline
+node dist/cli-node.js --version
 ```
 
 ## 配置模型
 
-RedScope 推荐把模型端点、API Key 和默认模型写入用户配置目录的 `env.config`，默认路径是：
+将端点、密钥和模型名写入 `env.config`。默认位置为 Windows 上的 `%USERPROFILE%\.redscope\env.config` 或 macOS、Linux 上的 `~/.redscope/env.config`。启动进程时已设置的环境变量优先。[配置模板](env.config.example)
 
-- Windows: `%USERPROFILE%\.redscope\env.config`
-- macOS/Linux: `~/.redscope/env.config`
-
-仓库提供了 [env.config.example](env.config.example)，可复制后按需填写。`env.config` 会在启动时加载，shell 中临时设置的环境变量优先级更高。
-
-OpenAI 兼容端点示例：
+OpenAI 兼容端点可使用下面四项，将端点、密钥和模型名替换为服务商提供的值。其他服务商有各自的鉴权字段。[模型配置说明](docs/usage.md#envconfig-配置)
 
 ```dotenv
 REDSCOPE_MODEL_PROVIDER=openai
 REDSCOPE_BASE_URL=https://api.openai.com/v1
-REDSCOPE_API_KEY=your-redscope-api-key
-REDSCOPE_MODEL=gpt-4.1
+REDSCOPE_API_KEY=YOUR_API_KEY
+REDSCOPE_MODEL=YOUR_MODEL_ID
 ```
-
-DeepSeek 示例：
-
-```dotenv
-REDSCOPE_MODEL_PROVIDER=deepseek
-DEEPSEEK_API_KEY=your-deepseek-api-key
-DEEPSEEK_MODEL=deepseek-chat
-```
-
-Gemini 示例：
-
-```dotenv
-REDSCOPE_MODEL_PROVIDER=gemini
-GEMINI_API_KEY=your-gemini-key
-GEMINI_MODEL=gemini-2.5-pro
-```
-
-更多配置项见 [项目使用文档](docs/usage.md#配置文件)。
 
 ## 基本使用
 
-启动交互式会话：
+安装 npm 包后，运行 `redscope` 即可进入终端会话。只想得到一次结构化回复时，可以使用打印模式。
 
-```bash
+```sh
 redscope
+redscope -p "阅读本地 package.json，列出测试脚本及其用途。" --output-format json
 ```
 
-直接传入提示词：
+**解释一个网址。** 在构建好的源码目录中运行以下命令。第一条只提供地址，模型可以解释协议、主机、端口和路径。第二条附上你已保存的页面摘录，适合归纳实际页面文字。
 
-```bash
-redscope "帮我审查这个仓库的安全风险"
+```powershell
+node dist/cli-node.js 'https://portal.example:8443/help'
+node dist/cli-node.js address-review 'https://portal.example:8443/help' --notes .\page-notes.txt
 ```
 
-管道模式：
+发给模型前，CLI 会移除网址中的账号、密码、查询串和片段，保留主机及路径。可选摘录须为本地 UTF-8 文本，文件上限为 64 KiB，最多向模型发送前 6,000 个 Unicode 码点。空白本地会话的第一条消息也可以直接粘贴网址，已有会话可使用 `/address-review`。[地址输入说明](docs/usage.md#输入地址生成内容说明)
 
-```bash
-echo "总结 package.json 的脚本" | redscope -p
-redscope -p "输出 JSON 摘要" --output-format json
+## 审阅工作流
+
+以下 PowerShell 示例在源码目录运行。将 `<run-id>` 换成已有的本地审计运行编号。该目录应含 `run.json`，以及 `raw/semgrep.json` 或 `raw/` 下的 SARIF 结果（`.sarif`、`.sarif.json`）。
+
+**1. 整理结果并核对证据。** 从已有工具输出生成报告和交付包，打开运行目录中的 `delivery/report.html`。点击发现旁的证据编号，可查看文件路径、字节数、SHA-256，以及报告记录的行号或 JSON 指针。
+
+```powershell
+$runDir = 'tools/outputs/authorized-semgrep-sast/<run-id>'
+bun scripts/redscope-report-pipeline.ts --run $runDir
+bun scripts/redscope-delivery.ts --run $runDir --status ready-for-review --reviewer 'Analyst'
+node scripts/redscope-verify-delivery.mjs --run $runDir
 ```
 
-指定模型和权限模式：
+归档时保留整个运行目录，包括 `raw/`。独立保存交付时输出的 `bundleDigest` 后，可在另一台机器上用 `--expect-digest` 比对副本。人工分诊可通过 `--triage-file` 记录负责人、状态和备注。[分诊与归档说明](docs/usage.md#生成交付包)
 
-```bash
-redscope --model sonnet --permission-mode acceptEdits
-redscope -p "生成一份发布说明" --allowedTools "Read,Grep,Glob"
+**2. 核对模型给出的修复建议。** 将生成的 `fix-page.json` 交给所选模型，请模型按页内约定回复，再将回复保存为 `reply.json`。检查器会核对页标识及发现 ID。
+
+```powershell
+node scripts/redscope-fix-brief.mjs --run $runDir --goal '核对配置加载日志，指出可能泄露密钥的位置并引用证据。' --out fix-page.json
+node scripts/redscope-check-fix-reply.mjs --brief fix-page.json --reply reply.json
 ```
 
-MCP 示例：
+**3. 衡量规则变更。** 用人工复核的已知阳性和阴性位置建立 `labels.json`，对同一版源码和同一组标签比较两次运行。输出包含精确率、召回率及误报、漏报数量，结果适用于这组样本。[标签格式与评分示例](docs/usage.md#源码审计检出质量与模型交接)
 
-```bash
-redscope mcp list
-redscope mcp add my-server npx -- -y @my-org/mcp-server
-redscope mcp remove my-server
+```powershell
+node scripts/redscope-score-audit.mjs --run $runDir --labels labels.json
 ```
 
-认证与状态：
+## 示例截图
 
-```bash
-redscope auth login
-redscope auth status --text
-redscope auth logout
-```
+下图来自已脱敏的历史评估记录，依次展示授权确认、Spring Boot Admin 报告和 Druid 监控面板报告。
 
-完整命令参考见 [docs/usage.md](docs/usage.md)。
+![终端会话中的授权确认示例](docs/images/redscope-security-chat.png)
 
-## 安全工作流
+![Spring Boot Admin 安全评估报告示例](docs/images/redscope-security-report-sba.png)
 
-RedScope 的安全工作流采用先授权、再计划、再执行、最后归档的流程。发布版用户可以直接用 `redscope` 发起评估；默认只做计划和低影响分析，不会运行主动扫描。主动或受限测试必须在提示词中明确说明已授权范围、测试窗口和执行边界，并由人工确认。
-
-```bash
-redscope "列出 RedScope 支持的安全评估 profile，并说明每种 profile 需要的授权条件"
-redscope "基于 tools/authorized-scope.example.json，对 https://www.example.com/ 生成 baseline-url-review 安全评估计划，不执行主动扫描"
-redscope "根据最近一次 baseline-url-review 评估结果，整理安全报告、证据索引和后续修复建议"
-```
-
-源码开发者需要生成本地 run/report/memory 产物时，可使用 [docs/usage.md](docs/usage.md#安全套件配置) 中的 `bun run redscope:*` 脚本命令。
-
-```mermaid
-flowchart LR
-  A["Scope / Rules of Engagement"] --> B["Profile Selection"]
-  B --> C["Plan Only by Default"]
-  C --> D{"--execute?"}
-  D -- "No" --> E["Run Artifacts"]
-  D -- "Yes + Confirmation" --> F["Controlled Tool Execution"]
-  F --> E
-  E --> G["Report Pipeline"]
-  G --> H["Observability Memory"]
-  G --> I["Delivery Package"]
-```
-
-## 测试示例截图
-
-以下示例展示 RedScope AI 在授权确认、目标识别与安全评估报告输出中的终端效果。
-
-> 截图中的目标地址和敏感信息已脱敏。
-
-![RedScope AI 授权确认示例](docs/images/redscope-security-chat.png)
-
-![RedScope AI Spring Boot Admin 安全评估报告示例](docs/images/redscope-security-report-sba.png)
-
-![RedScope AI Druid 监控面板风险发现示例](docs/images/redscope-security-report-druid.png)
+![Druid 监控面板风险报告示例](docs/images/redscope-security-report-druid.png)
 
 ## 项目流程
 
 ```mermaid
 flowchart TD
-  U["User / CI / Pipe"] --> CLI["src/entrypoints/cli.tsx"]
-  CLI --> MAIN["src/main.tsx Commander CLI"]
-  MAIN --> REPL["React Ink REPL"]
-  MAIN --> HEADLESS["Print / JSON / Stream JSON"]
-  REPL --> ENGINE["QueryEngine"]
-  HEADLESS --> ENGINE
-  ENGINE --> API["Provider Adapter"]
-  API --> P1["Anthropic"]
-  API --> P2["OpenAI Compatible"]
-  API --> P3["Gemini / Grok / Cloud"]
-  ENGINE --> TOOLS["Builtin Tools + MCP Tools"]
-  TOOLS --> FILES["Workspace Files"]
-  TOOLS --> SHELL["Shell / PowerShell"]
-  TOOLS --> MCP["MCP Servers / Plugins"]
+  CLI["RedScope CLI"] --> Session["交互终端或打印模式"]
+  Session --> Engine["QueryEngine"]
+  Engine --> Model["模型服务"]
+  Engine --> Tools["内置工具和 MCP"]
+  CLI --> Address["地址审阅"]
+  Address --> Text["脱敏地址和可选本地摘录"]
+  Text --> Model
+  Run["已有静态审计运行"] --> Report["归一化报告和证据索引"]
+  Report --> Delivery["分诊和 HTML 交付"]
+  Delivery --> Verify["离线校验"]
+  Report --> Brief["模型交接页"]
+  Brief --> Check["回复核对"]
+  Report --> Score["标签评分"]
 ```
 
 ## 技术栈
 
-- 运行时：Bun
-- 发布入口：Node.js 18+（默认）与 Bun 1.2+（可选）
-- 开发语言：TypeScript、TSX、ESM
-- CLI 框架：Commander.js
-- 终端界面：React 19 + Ink fork
-- 构建系统：Bun.build，Vite 备选构建流程
-- 测试框架：`bun:test`
-- 代码检查与格式化：Biome
-- 模型提供方：Anthropic SDK、OpenAI 兼容 Chat Completions、Gemini、Grok、AWS Bedrock、Google Vertex、Azure Foundry
-- 扩展能力：MCP、插件、自定义 Agent、slash command、hooks
-- 远程界面：`packages/remote-control-server` 中的 React + Vite + Radix UI
-- 出口 IP 切换：在 `~/.redscope/authorized-egress.referee-provided.json` 配置授权节点，或显式启用首次运行代理池；测试步骤可在节点失败或被限流时自动切换。
+终端使用 TypeScript、React 和 Ink，命令解析使用 Commander.js。源码由 Bun 构建，支持 Node.js 和 Bun 入口。项目使用 `bun:test` 运行测试、Biome 检查代码，自托管远程界面使用 React 和 Vite。
 
 ## 文档
 
-- [项目使用文档](docs/usage.md)
-- [Tools 安全套件说明](tools/README.md)
-- [远程控制自托管](docs/features/remote-control-self-hosting.md)
-- [MCP 配置](docs/extensibility/mcp-configuration.mdx)
-- [权限模型](docs/safety/permission-model.mdx)
-- 修复清单与 Goal Mode：[中文](docs/fix-list-goal-mode.zh.md) / [English](docs/fix-list-goal-mode.en.md)
+- [完整使用指南](docs/usage.md)
+- [工具套件与运行目录](tools/README.md)
+- [自托管远程控制](docs/features/remote-control-self-hosting.md)
+- [MCP 配置](docs/extensibility/mcp-configuration.mdx) · [权限模型](docs/safety/permission-model.mdx)
+- [修复清单与 Goal Mode](docs/fix-list-goal-mode.zh.md) · [English](docs/fix-list-goal-mode.en.md)
 - [外部依赖](docs/external-dependencies.md)
 
 ## 赞助打赏
 
-如果 RedScope AI 帮你节省了时间，欢迎支持项目继续维护：
-
-- GitHub Sponsors: [github.com/sponsors/PuppetWen](https://github.com/sponsors/PuppetWen)
-- Issues / Stars: [提交建议](https://github.com/PuppetWen/RedScope-AI/issues) 或给项目点 Star
-
-微信 / 支付宝打赏：
+欢迎支持项目维护，也可以在 Issues 中反馈问题。[GitHub Sponsors](https://github.com/sponsors/PuppetWen) · [提交反馈](https://github.com/PuppetWen/RedScope-AI/issues)
 
 | 微信 | 支付宝 |
 | --- | --- |

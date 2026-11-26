@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { createHash } from 'node:crypto'
+import { bundleDigest, hashFile } from './redscope-file-integrity.mjs'
 import { constants as fsConstants } from 'node:fs'
 import {
   access,
@@ -20,6 +20,13 @@ import {
   sep,
 } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  findNodeAtLocation,
+  getNodeValue,
+  parseTree,
+  type ParseError,
+} from 'jsonc-parser'
+import { z } from 'zod'
 import { envPathFrom } from './redscope-env-config.ts'
 
 type DeliveryStatus =
@@ -28,13 +35,15 @@ type DeliveryStatus =
   | 'approved'
   | 'needs-changes'
 
-type TriageStatus =
-  | 'needs-review'
-  | 'informational'
-  | 'accepted-risk'
-  | 'false-positive'
-  | 'fixed'
-  | 'deferred'
+const triageStatuses = [
+  'needs-review',
+  'informational',
+  'accepted-risk',
+  'false-positive',
+  'fixed',
+  'deferred',
+] as const
+type TriageStatus = (typeof triageStatuses)[number]
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 type FindingStatus = 'confirmed' | 'suspected' | 'informational'
@@ -169,19 +178,14 @@ type TriageBundle = {
   }
 }
 
-type ManualTriageFinding = {
-  id?: string
-  triageStatus?: TriageStatus
-  owner?: string
-  reviewerNotes?: string[]
-  note?: string
-}
-
-type ManualTriageInput = {
-  findings?:
-    | ManualTriageFinding[]
-    | Record<string, Omit<ManualTriageFinding, 'id'>>
-}
+const manualFindingSchema = z.object({
+  id: z.string().optional(),
+  triageStatus: z.enum(triageStatuses).optional(),
+  owner: z.string().optional(),
+  reviewerNotes: z.array(z.string()).optional(),
+  note: z.string().optional(),
+})
+type ManualTriageFinding = z.infer<typeof manualFindingSchema>
 
 type SignedFile = {
   path: string
@@ -368,12 +372,6 @@ async function writeText(path: string, content: string) {
   await writeFile(path, content)
 }
 
-async function sha256File(path: string): Promise<string> {
-  const hash = createHash('sha256')
-  hash.update(await readFile(path))
-  return hash.digest('hex')
-}
-
 async function signedFile(
   path: string,
   role: string,
@@ -384,23 +382,8 @@ async function signedFile(
   return {
     path: projectPath(path),
     role,
-    sha256: await sha256File(path),
-    bytes: info.size,
+    ...(await hashFile(path)),
   }
-}
-
-function bundleDigest(files: SignedFile[]): string {
-  const hash = createHash('sha256')
-  const canonical = files
-    .map(file => ({
-      path: file.path,
-      role: file.role,
-      sha256: file.sha256,
-      bytes: file.bytes,
-    }))
-    .sort((a, b) => a.path.localeCompare(b.path))
-  hash.update(JSON.stringify(canonical))
-  return hash.digest('hex')
 }
 
 async function findLatestRun(
@@ -473,22 +456,45 @@ function validateOptions(options: Options) {
   }
 }
 
-function normalizeManualTriage(
-  input: ManualTriageInput | undefined,
-): Map<string, ManualTriageFinding> {
+function normalizeManualTriage(raw: string): Map<string, ManualTriageFinding> {
   const overrides = new Map<string, ManualTriageFinding>()
-  const findings = input?.findings
-  if (!findings) return overrides
-
-  if (Array.isArray(findings)) {
-    for (const finding of findings) {
-      if (finding.id) overrides.set(finding.id, finding)
-    }
-    return overrides
+  // Keep property nodes so repeated IDs in the object form cannot be lost to JSON.parse.
+  const errors: ParseError[] = []
+  const root = parseTree(raw, errors, {
+    disallowComments: true,
+    allowTrailingComma: false,
+  })
+  if (errors.length || root?.type !== 'object') {
+    throw new Error('--triage-file must contain a valid JSON object')
   }
-
-  for (const [id, finding] of Object.entries(findings)) {
-    overrides.set(id, { id, ...finding })
+  const findings = findNodeAtLocation(root, ['findings'])
+  if (!findings) return overrides
+  if (findings.type !== 'array' && findings.type !== 'object') {
+    throw new Error('--triage-file findings must be an array or an object keyed by finding ID')
+  }
+  for (const [index, entry] of (findings.children ?? []).entries()) {
+    const property = entry.type === 'property' ? entry.children : undefined
+    const key: string | undefined = property?.[0]?.value
+    const value = property ? property[1] : entry
+    const location = `findings[${key === undefined ? index : JSON.stringify(key)}]`
+    const parsed = manualFindingSchema.safeParse(value && getNodeValue(value))
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]!
+      const field = [location, ...issue.path].join('.')
+      throw new Error(`--triage-file ${field}: ${issue.message}`)
+    }
+    const finding = parsed.data
+    if (key !== undefined && finding.id !== undefined && key !== finding.id) {
+      throw new Error(`--triage-file ${location}.id conflicts with the object key`)
+    }
+    const id = key ?? finding.id
+    if (!id?.trim()) {
+      throw new Error(`--triage-file ${location} requires a nonempty finding ID`)
+    }
+    if (overrides.has(id)) {
+      throw new Error(`--triage-file has duplicate finding ID ${JSON.stringify(id)}`)
+    }
+    overrides.set(id, finding)
   }
   return overrides
 }
@@ -499,8 +505,8 @@ async function readManualTriageFile(
   if (!path) return new Map()
   const triagePath = resolveProjectPath(path)
   assertInside(triagePath, repoRoot, 'triage file')
-  const input = await readJsonFile<ManualTriageInput>(triagePath)
-  return normalizeManualTriage(input)
+  const raw = await readFile(triagePath, 'utf8')
+  return normalizeManualTriage(raw.replace(/^\uFEFF/, ''))
 }
 
 function applyManualTriage(
@@ -532,6 +538,19 @@ function buildTriage(
   generatedAt: string,
   manualTriage: Map<string, ManualTriageFinding>,
 ): TriageBundle {
+  if (manualTriage.size) {
+    const unmatched = new Set(manualTriage.keys())
+    for (const { id } of bundle.findings ?? []) {
+      if (id === undefined || !manualTriage.has(id)) continue
+      if (!unmatched.delete(id)) {
+        throw new Error(`--triage-file ID ${JSON.stringify(id)} matches multiple findings in this run`)
+      }
+    }
+    if (unmatched.size) {
+      const ids = Array.from(unmatched, id => JSON.stringify(id)).join(', ')
+      throw new Error(`--triage-file references unknown finding IDs in this run: ${ids}`)
+    }
+  }
   const findings = (bundle.findings ?? []).map((finding): TriageFinding => {
     const status = triageStatus(finding)
     const triageFinding = {
@@ -551,7 +570,7 @@ function buildTriage(
     }
     return applyManualTriage(
       triageFinding,
-      manualTriage.get(triageFinding.id),
+      finding.id === undefined ? undefined : manualTriage.get(finding.id),
     )
   })
   const needsReview = findings.filter(
@@ -743,9 +762,90 @@ function markdownToHtml(markdown: string): string {
   return output.join('\n')
 }
 
+function evidencePositions(
+  entries: NonNullable<EvidenceIndex['evidence']>,
+  key: 'id' | 'path',
+) {
+  const positions = new Map<string, number | null>()
+  entries.forEach((entry, index) => {
+    const value = entry[key]
+    if (value) positions.set(value, positions.has(value) ? null : index)
+  })
+  return positions
+}
+
+function renderReview(
+  triage: TriageBundle,
+  bundle: FindingBundle,
+  evidenceIndex: EvidenceIndex,
+): string {
+  const entries = evidenceIndex.evidence ?? []
+  const byId = evidencePositions(entries, 'id')
+  const byPath = evidencePositions(entries, 'path')
+
+  function evidenceLink(ref: EvidenceReference): string {
+    const position = ref.id ? byId.get(ref.id) : byPath.get(ref.path ?? '')
+    const label = escapeHtml(ref.id || ref.path || 'Unnamed reference')
+    const locator = [
+      ref.line != null ? `line ${escapeHtml(String(ref.line))}` : '',
+      ref.jsonPointer ? `JSON pointer <code>${escapeHtml(ref.jsonPointer)}</code>` : '',
+    ].filter(Boolean).join(' · ')
+    const valid = position != null &&
+      (!ref.path || !entries[position].path || entries[position].path === ref.path)
+    const pathHint = ref.id && ref.path ? ` · <code>${escapeHtml(ref.path)}</code>` : ''
+    const link = valid
+      ? `<a href="#review-evidence-${position}">${label}</a>`
+      : `<strong class="unresolved">${label} (unresolved reference)</strong>${pathHint}`
+    return `<li>${link}${locator ? ' · ' + locator : ''}</li>`
+  }
+
+  const findings = triage.findings.map((finding, index) => {
+    // buildTriage maps the normalized findings in order, including older entries without IDs.
+    const refs = bundle.findings?.[index]?.evidence ?? []
+    const notes = finding.reviewerNotes.map(note => `<li>${escapeHtml(note)}</li>`).join('')
+    return {
+      needsReview: finding.triageStatus === 'needs-review',
+      severity: finding.severity,
+      html: `<li class="review-finding">
+        <div><span class="identifier">${escapeHtml(finding.id)}</span><h3>${escapeHtml(finding.title)}</h3>
+          <p>${escapeHtml(finding.severity)} · ${escapeHtml(finding.reportStatus)}</p></div>
+        <div><strong>${escapeHtml(finding.triageStatus)}</strong><p>Owner · ${escapeHtml(finding.owner)}</p>
+          ${notes ? `<ul aria-label="Reviewer notes">${notes}</ul>` : ''}</div>
+        <div><span class="identifier">Evidence</span>${refs.length
+          ? `<ul>${refs.map(evidenceLink).join('')}</ul>`
+          : '<p>No evidence references.</p>'}</div>
+      </li>`,
+    }
+  })
+  const severityRank: Record<TriageFinding['severity'], number> = {
+    critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0,
+  }
+  findings.sort((a, b) =>
+    Number(b.needsReview) - Number(a.needsReview) ||
+    (severityRank[b.severity] ?? 0) - (severityRank[a.severity] ?? 0),
+  )
+
+  const evidence = entries.map((item, index) => `<li id="review-evidence-${index}" tabindex="-1">
+      <strong>${escapeHtml(item.id || 'Evidence entry')}</strong> · <code>${escapeHtml(item.path || 'Path unavailable')}</code>
+      <p>${escapeHtml(item.kind || 'File')}${item.bytes != null ? ' · ' + escapeHtml(String(item.bytes)) + ' bytes' : ''}</p>
+      <p>SHA-256 · <code>${escapeHtml(item.sha256 || 'Hash unavailable')}</code></p>
+    </li>`).join('')
+
+  return `<section id="finding-review" aria-labelledby="review-title">
+      <h2 id="review-title">Finding review</h2>
+      ${findings.length ? `<ol class="review-list">${findings.map(finding => finding.html).join('')}</ol>` : '<p>No findings to review.</p>'}
+    </section>
+    <section id="review-evidence" aria-labelledby="evidence-title">
+      <h2 id="evidence-title">Evidence register</h2>
+      ${entries.length ? `<ul class="evidence-list">${evidence}</ul>` : '<p>No indexed evidence.</p>'}
+    </section>`
+}
+
 function renderHtmlDocument(
   reportMarkdown: string,
   triage: TriageBundle,
+  bundle: FindingBundle,
+  evidenceIndex: EvidenceIndex,
 ): string {
   const status = escapeHtml(triage.review.status)
   const reviewer = escapeHtml(triage.review.reviewer)
@@ -755,6 +855,7 @@ function renderHtmlDocument(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <title>RedScope Delivery Report</title>
   <style>
     :root {
@@ -763,8 +864,8 @@ function renderHtmlDocument(
       --muted: #5f6368;
       --line: #ded8d2;
       --surface: #fffaf6;
-      --accent: #d77757;
-      --blue: #5769f7;
+      --accent: #94462c;
+      --blue: #324aab;
     }
     body {
       margin: 0;
@@ -778,6 +879,7 @@ function renderHtmlDocument(
       padding: 40px 28px 56px;
       background: var(--surface);
       min-height: 100vh;
+      overflow-wrap: anywhere;
     }
     header {
       border-bottom: 1px solid var(--line);
@@ -838,6 +940,29 @@ function renderHtmlDocument(
       color: var(--blue);
       word-break: break-all;
     }
+    nav { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 20px; }
+    a { color: var(--blue); text-underline-offset: 3px; }
+    .review-list, .evidence-list { list-style: none; margin: 0; padding: 0; }
+    .review-list > li, .evidence-list > li { border-top: 1px solid var(--line); padding: 14px 0; }
+    .review-finding { display: grid; grid-template-columns: 2fr 1fr 1.4fr; gap: 20px; }
+    .review-finding h3 { margin: 3px 0; font-size: 16px; }
+    .review-finding p, .evidence-list p { margin: 4px 0 0; }
+    .review-finding ul { margin: 4px 0; padding-inline-start: 1.25em; }
+    .identifier { font-size: 12px; color: var(--muted); }
+    .unresolved { color: var(--accent); }
+    .evidence-list > li:target { background: #fff0c9; }
+    @media (max-width: 620px) {
+      main { padding: 24px 16px; }
+      .review-finding { grid-template-columns: 1fr; gap: 8px; }
+      article { overflow-x: auto; }
+    }
+    @media print {
+      body, main { background: white; }
+      main { padding: 0; }
+      nav { display: none; }
+      .review-list > li, .evidence-list > li { break-inside: avoid; }
+      pre { white-space: pre-wrap; }
+    }
   </style>
 </head>
 <body>
@@ -848,10 +973,14 @@ function renderHtmlDocument(
         <div><strong>Status</strong><span class="status">${status}</span></div>
         <div><strong>Reviewer</strong>${reviewer}</div>
         <div><strong>Findings</strong>${triage.summary.total}</div>
+        <div><strong>Needs review</strong>${triage.summary.needsReview}</div>
         <div><strong>Integrity manifest</strong><span class="digest">delivery/report-signature.json</span></div>
       </div>
+      <nav aria-label="Report sections"><a href="#finding-review">Finding review</a><a href="#review-evidence">Evidence register</a><a href="#full-report">Full report</a></nav>
     </header>
-    ${body}
+    ${triage.review.note ? `<p><strong>Reviewer note</strong> · ${escapeHtml(triage.review.note)}</p>` : ''}
+    ${renderReview(triage, bundle, evidenceIndex)}
+    <article id="full-report" aria-label="Full report">${body}</article>
   </main>
 </body>
 </html>
@@ -1055,7 +1184,7 @@ async function runDelivery(options: Options) {
   }
 
   if (!options.skipHtml) {
-    const html = renderHtmlDocument(reportMarkdown, triage)
+    const html = renderHtmlDocument(reportMarkdown, triage, findings, evidenceIndex)
     if (!options.dryRun) {
       await writeText(join(deliveryDir, 'report.html'), html)
     }
@@ -1162,6 +1291,9 @@ async function runDelivery(options: Options) {
   console.log(`  status: ${triage.review.status}`)
   console.log(`  findings needing review: ${triage.summary.needsReview}`)
   console.log(`  signature: ${signature.bundleDigest}`)
+  if (!options.dryRun) {
+    console.log(`  verify: node scripts/redscope-verify-delivery.mjs --run "${projectPath(runDir)}" --expect-digest ${digest}`)
+  }
 }
 
 runDelivery(parseArgs(process.argv.slice(2))).catch(error => {
