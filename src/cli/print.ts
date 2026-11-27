@@ -35,9 +35,12 @@ import {
 import { toolMatchesName, type Tool, type Tools } from 'src/Tool.js'
 import {
   type AgentDefinition,
+  getActiveAgentsFromList,
   isBuiltInAgent,
   parseAgentsFromJson,
 } from '@redscope-ai/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import { findAgentByType, REDSCOPE_GUIDE_AGENT_TYPE } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js'
+import { buildProductGuidePrompt } from '@redscope-ai/builtin-tools/tools/AgentTool/built-in/redscopeGuideAgent.js'
 import type { Message, NormalizedUserMessage } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
@@ -200,7 +203,7 @@ import {
   getInitJsonSchema,
   setSdkAgentProgressSummariesEnabled,
 } from 'src/bootstrap/state.js'
-import { createSyntheticOutputTool } from '@redscope-ai/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
+import { createSyntheticOutputTool, SYNTHETIC_OUTPUT_TOOL_NAME } from '@redscope-ai/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { parseSessionIdentifier } from 'src/utils/sessionUrl.js'
 import {
   hydrateRemoteSession,
@@ -2032,6 +2035,20 @@ function runHeadlessStreaming(
           }
 
           const allTools = buildAllTools(appState)
+          const turnCommands = uniqBy([...currentCommands, ...appState.mcp.commands], 'name')
+          let turnTools = allTools
+          let turnPrompt = options.systemPrompt
+          // Built-in product guidance also applies to an explicitly selected headless session.
+          if (getMainThreadAgentType() === REDSCOPE_GUIDE_AGENT_TYPE) {
+            const activeAgents = getActiveAgentsFromList(currentAgents)
+            const guide = findAgentByType(activeAgents, REDSCOPE_GUIDE_AGENT_TYPE)
+            if (guide?.source === 'built-in') {
+              turnTools = allTools.filter(tool =>
+                guide.tools?.includes(tool.name) || tool.name === SYNTHETIC_OUTPUT_TOOL_NAME,
+              )
+              turnPrompt ??= buildProductGuidePrompt(turnCommands, activeAgents, allMcpClients)
+            }
+          }
 
           for (const uuid of batchUuids) {
             notifyCommandLifecycle(uuid, 'started')
@@ -2185,15 +2202,12 @@ function runHeadlessStreaming(
               cmd.workload ?? options.workload,
               async () => {
                 for await (const message of ask({
-                  commands: uniqBy(
-                    [...currentCommands, ...appState.mcp.commands],
-                    'name',
-                  ),
+                  commands: turnCommands,
                   prompt: input,
                   promptUuid: cmd.uuid,
                   isMeta: cmd.isMeta,
                   cwd: cwd(),
-                  tools: allTools,
+                  tools: turnTools,
                   verbose: options.verbose,
                   mcpClients: allMcpClients,
                   thinkingConfig: options.thinkingConfig,
@@ -2219,7 +2233,7 @@ function runHeadlessStreaming(
                     }
                     pendingSeeds.clear()
                   },
-                  customSystemPrompt: options.systemPrompt,
+                  customSystemPrompt: turnPrompt,
                   appendSystemPrompt: options.appendSystemPrompt,
                   getAppState,
                   setAppState,
@@ -4565,8 +4579,8 @@ async function handleInitializeRequest(
   if (options.agent) {
     // If main.tsx already found this agent (filesystem-defined), it already
     // applied systemPrompt/model/initialPrompt. Skip to avoid double-apply.
-    const alreadyResolved = getMainThreadAgentType() === options.agent
-    const mainThreadAgent = agents.find(a => a.agentType === options.agent)
+    const mainThreadAgent = findAgentByType(agents, options.agent)
+    const alreadyResolved = getMainThreadAgentType() === mainThreadAgent?.agentType
     if (mainThreadAgent && !alreadyResolved) {
       // Update the main thread agent type in bootstrap state
       setMainThreadAgentType(mainThreadAgent.agentType)

@@ -110,9 +110,13 @@ app.get("/sessions/:id/events", uuidAuth, async (c) => {
     return c.json({ error: { type: "session_closed", message: `Session is ${session.status}` } }, 409);
   }
 
-  const lastEventId = c.req.header("Last-Event-ID");
-  const fromSeqNum = lastEventId ? parseInt(lastEventId) : 0;
-  return createSSEStream(c, sessionId, fromSeqNum);
+  // Native EventSource supplies Last-Event-ID on reconnect. On the first
+  // connection the client only knows the cursor returned by its history read.
+  const cursor = c.req.header("Last-Event-ID") ?? c.req.query("after");
+  if (cursor !== undefined && (!/^\d+$/.test(cursor) || !Number.isSafeInteger(Number(cursor)))) {
+    return c.json({ error: { type: "invalid_request", message: "Invalid event cursor" } }, 400);
+  }
+  return createSSEStream(c, sessionId, cursor === undefined ? undefined : Number(cursor));
 });
 
 export default app;

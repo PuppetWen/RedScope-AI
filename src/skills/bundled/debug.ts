@@ -1,5 +1,5 @@
 import { open, stat } from 'fs/promises'
-import { CLAUDE_CODE_GUIDE_AGENT_TYPE } from '@redscope-ai/builtin-tools/tools/AgentTool/built-in/claudeCodeGuideAgent.js'
+import { REDSCOPE_GUIDE_AGENT_TYPE } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js'
 import { getSettingsFilePathForSource } from 'src/utils/settings/settings.js'
 import { enableDebugLogging, getDebugLogPath } from '../../utils/debug.js'
 import { errorMessage, isENOENT } from '../../utils/errors.js'
@@ -93,7 +93,7 @@ Remember that settings are in:
 
 1. Review the user's issue description
 2. The last ${DEFAULT_DEBUG_LINES_READ} lines show the debug file format. Look for [ERROR] and [WARN] entries, stack traces, and failure patterns across the file
-3. Consider launching the ${CLAUDE_CODE_GUIDE_AGENT_TYPE} subagent to understand the relevant RedScope AI features
+3. Consider launching the ${REDSCOPE_GUIDE_AGENT_TYPE} subagent to understand the relevant RedScope AI features
 4. Explain what you found in plain language
 5. Suggest concrete fixes or next steps
 `

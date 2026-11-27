@@ -119,6 +119,7 @@ import {
   getFileModificationTimeAsync,
   isFileWithinReadSizeLimit,
 } from './file.js'
+import { findAgentByType, resolveAllowedAgentTypes } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js'
 import type { AgentDefinition } from '@redscope-ai/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { filterAgentsByMcpRequirements } from '@redscope-ai/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { AGENT_TOOL_NAME } from '@redscope-ai/builtin-tools/tools/AgentTool/constants.js'
@@ -1540,8 +1541,9 @@ export function getAgentListingDeltaAttachment(
     permissionContext,
     AGENT_TOOL_NAME,
   )
-  if (allowedAgentTypes) {
-    filtered = filtered.filter(a => allowedAgentTypes.includes(a.agentType))
+  const allowedNames = resolveAllowedAgentTypes(activeAgents, allowedAgentTypes)
+  if (allowedNames) {
+    filtered = filtered.filter(a => allowedNames.includes(a.agentType))
   }
 
   // Reconstruct announced set from prior deltas in the transcript.
@@ -1995,8 +1997,7 @@ function processAgentMentions(
   if (agentMentions.length === 0) return []
 
   const results = agentMentions.map(mention => {
-    const agentType = mention.replace('agent-', '')
-    const agentDef = agents.find(def => def.agentType === agentType)
+    const agentDef = findAgentByType(agents, mention.replace('agent-', ''))
 
     if (!agentDef) {
       logEvent('tengu_at_mention_agent_not_found', {})
@@ -2229,10 +2230,9 @@ async function getRelevantMemoryAttachments(
   // If an agent is @-mentioned, search only its memory dir (isolation).
   // Otherwise search the auto-memory dir.
   const memoryDirs = extractAgentMentions(input).flatMap(mention => {
-    const agentType = mention.replace('agent-', '')
-    const agentDef = agents.find(def => def.agentType === agentType)
+    const agentDef = findAgentByType(agents, mention.replace('agent-', ''))
     return agentDef?.memory
-      ? [getAgentMemoryDir(agentType, agentDef.memory)]
+      ? [getAgentMemoryDir(agentDef.agentType, agentDef.memory)]
       : []
   })
   const dirs = memoryDirs.length > 0 ? memoryDirs : [getAutoMemPath()]

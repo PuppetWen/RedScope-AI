@@ -100,6 +100,7 @@ import {
   getLastToolUseName,
   runAsyncAgentLifecycle,
 } from './agentToolUtils.js'
+import { findAgentByType, resolveAllowedAgentTypes } from './agentTypeNames.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import {
   AGENT_TOOL_NAME,
@@ -369,7 +370,11 @@ export const AgentTool = buildTool({
     const isCoordinator = feature('COORDINATOR_MODE')
       ? isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
       : false
-    return await getPrompt(filteredAgents, isCoordinator, allowedAgentTypes)
+    return await getPrompt(
+      filteredAgents,
+      isCoordinator,
+      resolveAllowedAgentTypes(agents, allowedAgentTypes),
+    )
   },
   name: AGENT_TOOL_NAME,
   searchHint: 'delegate work to a subagent',
@@ -387,7 +392,7 @@ export const AgentTool = buildTool({
   async call(
     {
       prompt,
-      subagent_type,
+      subagent_type: requestedAgentType,
       description,
       model: modelParam,
       run_in_background,
@@ -407,6 +412,13 @@ export const AgentTool = buildTool({
 
     // Get app state for permission mode and agent filtering
     const appState = toolUseContext.getAppState()
+    const allAgents = toolUseContext.options.agentDefinitions.activeAgents
+    const requestedAgent = findAgentByType(allAgents, requestedAgentType)
+    const subagent_type = requestedAgent?.agentType ?? requestedAgentType
+    const allowedAgentTypes = resolveAllowedAgentTypes(
+      allAgents,
+      toolUseContext.options.agentDefinitions.allowedAgentTypes,
+    )
     const permissionMode = appState.toolPermissionContext.mode
     // In-process teammates get a no-op setAppState; setAppStateForTasks
     // reaches the root store so task registration/progress/kill stay visible.
@@ -439,14 +451,15 @@ export const AgentTool = buildTool({
     // Check if this is a multi-agent spawn request
     // Spawn is triggered when team_name is set (from param or context) and name is provided
     if (teamName && name) {
+      if (subagent_type && (
+        (allowedAgentTypes && !allowedAgentTypes.includes(subagent_type)) ||
+        getDenyRuleForAgent(appState.toolPermissionContext, AGENT_TOOL_NAME, subagent_type)
+      )) {
+        throw new Error(`Agent type '${subagent_type}' is restricted in this session.`)
+      }
       // Set agent definition color for grouped UI display before spawning
-      const agentDef = subagent_type
-        ? toolUseContext.options.agentDefinitions.activeAgents.find(
-            a => a.agentType === subagent_type,
-          )
-        : undefined
-      if (agentDef?.color) {
-        setAgentColor(subagent_type!, agentDef.color)
+      if (requestedAgent?.color) {
+        setAgentColor(requestedAgent.agentType, requestedAgent.color)
       }
       const result = await spawnTeammate(
         {
@@ -456,7 +469,7 @@ export const AgentTool = buildTool({
           team_name: teamName,
           use_splitpane: true,
           plan_mode_required: spawnMode === 'plan',
-          model: model ?? agentDef?.model,
+          model: model ?? requestedAgent?.model,
           agent_type: subagent_type,
           invokingRequestId: assistantMessage?.requestId as string | undefined,
         },
@@ -504,8 +517,6 @@ export const AgentTool = buildTool({
       selectedAgent = FORK_AGENT
     } else {
       // Filter agents to exclude those denied via Agent(AgentName) syntax
-      const allAgents = toolUseContext.options.agentDefinitions.activeAgents
-      const { allowedAgentTypes } = toolUseContext.options.agentDefinitions
       const agents = filterDeniedAgents(
         // When allowedAgentTypes is set (from Agent(x,y) tool spec), restrict to those types
         allowedAgentTypes

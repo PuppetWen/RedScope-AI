@@ -27,6 +27,7 @@ import type { SystemPrompt } from 'src/utils/systemPromptType.js'
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js'
 import { getParentSessionId } from 'src/utils/teammate.js'
 import { reconstructForSubagentResume } from 'src/utils/toolResultStorage.js'
+import { findAgentByType } from './agentTypeNames.js'
 import { runAsyncAgentLifecycle } from './agentToolUtils.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { FORK_AGENT, isForkSubagentEnabled } from './forkSubagent.js'
@@ -103,9 +104,7 @@ export async function resumeAgentBackground({
     selectedAgent = FORK_AGENT
     isResumedFork = true
   } else if (meta?.agentType) {
-    const found = toolUseContext.options.agentDefinitions.activeAgents.find(
-      a => a.agentType === meta.agentType,
-    )
+    const found = findAgentByType(toolUseContext.options.agentDefinitions.activeAgents, meta.agentType)
     selectedAgent = found ?? GENERAL_PURPOSE_AGENT
   } else {
     selectedAgent = GENERAL_PURPOSE_AGENT

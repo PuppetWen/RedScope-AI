@@ -21,6 +21,7 @@ import {
 import { accumulateUsage, updateUsage } from '../services/api/claude.js'
 import { EMPTY_USAGE, type NonNullableUsage } from '@ant/model-provider'
 import type { ToolUseContext } from '../Tool.js'
+import { findAgentByType } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js'
 import type { AgentDefinition } from '@redscope-ai/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { AgentId } from '../types/ids.js'
 import type { Message } from '../types/message.js'
@@ -212,7 +213,7 @@ export async function prepareForkedCommandContext(
   const agentTypeName = command.agent ?? 'general-purpose'
   const agents = context.options.agentDefinitions.activeAgents
   const baseAgent =
-    agents.find(a => a.agentType === agentTypeName) ??
+    findAgentByType(agents, agentTypeName) ??
     agents.find(a => a.agentType === 'general-purpose') ??
     agents[0]
 

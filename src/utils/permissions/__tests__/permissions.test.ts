@@ -107,6 +107,12 @@ describe('Langfuse trace propagation', () => {
 })
 
 describe('filterDeniedAgents', () => {
+  test('preserves legacy guide denies after the role is renamed', () => {
+    const ctx = makeContext({ denyRules: ['Agent(claude-code-guide)'] })
+    const agents = [{ agentType: 'claude-code-guide' }, { agentType: 'redscope-guide' }]
+    expect(filterDeniedAgents(agents, ctx, 'Agent')).toEqual([])
+    expect(getDenyRuleForAgent(ctx, 'Agent', 'redscope-guide')).not.toBeNull()
+  })
   test('returns all agents when no deny rules', () => {
     const ctx = makeContext({})
     const agents = [{ agentType: 'Explore' }, { agentType: 'Research' }]

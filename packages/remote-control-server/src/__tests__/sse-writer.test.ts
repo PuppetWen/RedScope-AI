@@ -131,7 +131,7 @@ describe("SSE Writer", () => {
       expect(text).toContain("assistant");
     });
 
-    test("no historical events when fromSeqNum is 0", async () => {
+    test("no historical events when a cursor was not supplied", async () => {
       const bus = getEventBus("s5");
       bus.publish({ id: "e1", sessionId: "s5", type: "user", payload: {}, direction: "outbound" });
 
@@ -139,12 +139,11 @@ describe("SSE Writer", () => {
 
       app.get("/stream/:sessionId", (c) => {
         const sessionId = c.req.param("sessionId");
-        return createSSEStream(c, sessionId, 0);
+        return createSSEStream(c, sessionId);
       });
 
       const res = await app.request("/stream/s5");
       const text = await readPartialStream(res);
-      // With fromSeqNum=0, no historical replay, just keepalive
       expect(text).toContain(": keepalive");
       // Should NOT contain event data (only keepalive)
       expect(text).not.toContain("event: message");

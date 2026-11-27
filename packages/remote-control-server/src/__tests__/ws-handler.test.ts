@@ -51,6 +51,30 @@ describe("ws-handler", () => {
   });
 
   describe("ingestBridgeMessage", () => {
+    test("retains task lineage and status without adding prompts or outputs to lifecycle metadata", () => {
+      ingestBridgeMessage("s1", {
+        type: "assistant", parent_tool_use_id: "parent",
+        message: { role: "assistant", content: [] },
+      });
+      ingestBridgeMessage("s1", {
+        type: "system", subtype: "task_notification", task_id: "task", tool_use_id: "tool",
+        status: "completed", prompt: "private request", summary: "private output", output_file: "private/path",
+      });
+      ingestBridgeMessage("s1", {
+        type: "user", message: { role: "user", content: [] },
+        tool_use_result: { status: "async_launched", content: "private output" },
+      });
+
+      const events = getEventBus("s1").getEventsSince(0);
+      const raw = events.map(e => (e.payload as { raw: Record<string, unknown> }).raw);
+      expect(raw[0]?.parent_tool_use_id).toBe("parent");
+      expect(raw[1]).toMatchObject({ subtype: "task_notification", task_id: "task", tool_use_id: "tool", status: "completed" });
+      expect(raw[1]).not.toHaveProperty("prompt");
+      expect(raw[1]).not.toHaveProperty("summary");
+      expect(raw[1]).not.toHaveProperty("output_file");
+      expect(raw[2]?.tool_use_result).toEqual({ status: "async_launched" });
+    });
+
     test("ignores keep_alive messages", () => {
       const bus = getEventBus("s1");
       const events: unknown[] = [];

@@ -19,6 +19,7 @@ import {
   getActiveAgentsFromList,
   getAgentDefinitionsWithOverrides,
 } from '@redscope-ai/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import { findAgentByType } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js'
 import { TODO_WRITE_TOOL_NAME } from '@redscope-ai/builtin-tools/tools/TodoWriteTool/constants.js'
 import { asSessionId } from '../types/ids.js'
 import type {
@@ -216,9 +217,7 @@ export function restoreAgentFromSession(
     return { agentDefinition: undefined, agentType: undefined }
   }
 
-  const resumedAgent = agentDefinitions.activeAgents.find(
-    agent => agent.agentType === agentSetting,
-  )
+  const resumedAgent = findAgentByType(agentDefinitions.activeAgents, agentSetting)
   if (!resumedAgent) {
     logForDebugging(
       `Resumed session had agent "${agentSetting}" but it is no longer available. Using default behavior.`,

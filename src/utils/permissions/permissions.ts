@@ -6,6 +6,7 @@ import {
   mcpInfoFromString,
 } from '../../services/mcp/mcpStringUtils.js'
 import type { Tool, ToolPermissionContext, ToolUseContext } from '../../Tool.js'
+import { canonicalAgentPolicyName } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js'
 import { AGENT_TOOL_NAME } from '@redscope-ai/builtin-tools/tools/AgentTool/constants.js'
 import { shouldUseSandbox } from '@redscope-ai/builtin-tools/tools/BashTool/shouldUseSandbox.js'
 import { BASH_TOOL_NAME } from '@redscope-ai/builtin-tools/tools/BashTool/toolName.js'
@@ -314,7 +315,9 @@ export function getDenyRuleForAgent(
     getDenyRules(context).find(
       rule =>
         rule.ruleValue.toolName === agentToolName &&
-        rule.ruleValue.ruleContent === agentType,
+        rule.ruleValue.ruleContent !== undefined &&
+        (rule.ruleValue.ruleContent === agentType ||
+          canonicalAgentPolicyName(rule.ruleValue.ruleContent) === agentType),
     ) || null
   )
 }
@@ -337,6 +340,7 @@ export function filterDeniedAgents<T extends { agentType: string }>(
       rule.ruleValue.ruleContent !== undefined
     ) {
       deniedAgentTypes.add(rule.ruleValue.ruleContent)
+      deniedAgentTypes.add(canonicalAgentPolicyName(rule.ruleValue.ruleContent))
     }
   }
   return agents.filter(agent => !deniedAgentTypes.has(agent.agentType))

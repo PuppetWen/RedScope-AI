@@ -96,7 +96,7 @@ Fork 子进程保留 Agent 工具（为了 cache-identical tool defs），但通
 | **Plan** | 继承父模型 | 只读 | 为 Plan Mode 收集研究信息 |
 | **General-purpose** | 继承父模型 | 全部工具 | 复杂的通用任务处理 |
 | **statusline-setup** | 继承父模型 | 受限 | 配置状态栏设置 |
-| **claude-code-guide** | 继承父模型 | 受限 | 解答 RedScope AI 使用问题 |
+| **redscope-guide** | Haiku | 读取与文档查询 | 根据 RedScope AI 项目文档解释 CLI、Agent 配置、静态审阅与报告验收 |
 
 用户还可通过 `.claude/agents/` 目录或 settings 定义自定义 Agent，作用域优先级为：managed settings > CLI `--agents` > 项目级 `.claude/agents/` > 用户级 `~/.claude/agents/` > plugin。
 

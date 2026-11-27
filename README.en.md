@@ -37,6 +37,9 @@ RedScope AI is a terminal assistant for security reviewers. Use it to explain an
 
 These features are available in this checkout. The npm badge above tracks the separately published package.
 
+- **RedScope product guide.** Select `redscope-guide` for answers grounded in the project's README, usage guide, and configuration template.
+- **Live review task tree.** Open the review tasks panel (审阅任务) in a remote session to see delegated exploration, planning, documentation, and verification work. Nodes show the assigned work and recorded status. Missing parent or completion records are marked.
+
 - **Address summaries.** A full HTTP or HTTPS address opens a text-only review. You can attach a page excerpt when you want the model to discuss actual content. The terminal identifies locally generated output if the provider cannot supply a response.
 - **Static analysis imports.** A report can combine native Semgrep JSON with inline SARIF 2.1.0 results from tools such as CodeQL. Findings keep their rule, source location, and a reference back to the raw result. A Semgrep baseline commit can limit a review to new findings.
 - **Measured detection quality.** Compare runs against the same labeled source locations and see precision, recall, and unmatched results. These scores describe the labeled cases. A baseline run and a full run cover different sets of findings.

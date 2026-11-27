@@ -195,10 +195,10 @@ AgentTool.call({ subagent_type: "reviewer", ... })
 | **Explore** | `Explore` | 代码搜索专家 | 只读（无 Write/Edit） | haiku（外部） |
 | **Plan** | `Plan` | 规划专家 | 只读 + ExitPlanMode | inherit |
 | **Verification** | `verification` | 结果验证 | 由 feature flag 控制 | — |
-| **Code Guide** | `claude-code-guide` | RedScope AI 使用指南 | 只读 | — |
+| **RedScope 产品指南** | `redscope-guide` | 根据本项目文档解答 CLI、配置、静态审阅和交付问题 | 读取与文档查询 | Haiku |
 | **Statusline Setup** | `statusline-setup` | 终端状态栏配置 | 有限 | — |
 
-SDK 入口（`sdk-ts`/`sdk-py`/`sdk-cli`）不加载 Code Guide Agent。环境变量 `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` 可以完全禁用内置 Agent，给 SDK 用户提供空白画布。
+RedScope 产品指南可在普通 CLI 和打印模式使用，例如 `redscope --agent redscope-guide -p "RedScope 的配置模板在哪里？"`。已有配置可继续使用旧角色名 `claude-code-guide`。显式定义的同名自定义角色优先生效。TypeScript、Python SDK 入口省略产品指南，非交互会话还可通过 `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` 关闭内置角色。
 
 ## Agent Memory：持久化的 Agent 状态
 

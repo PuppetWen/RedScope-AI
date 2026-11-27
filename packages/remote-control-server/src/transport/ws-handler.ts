@@ -167,6 +167,10 @@ function deriveEventType(msg: Record<string, unknown>): string {
   return "unknown";
 }
 
+const agentResultStates = new Set(["completed", "async_launched", "remote_launched", "teammate_spawned"]);
+const taskEventTypes = new Set(["task_started", "task_progress", "task_notification"]);
+const terminalTaskStates = new Set(["completed", "failed", "stopped"]);
+
 /**
  * Parse a single SDK message from bridge -> publish to EventBus as inbound.
  */
@@ -192,11 +196,29 @@ export function ingestBridgeMessage(sessionId: string, msg: Record<string, unkno
         .map((b: Record<string, unknown>) => (b as Record<string, unknown>).text || "")
         .join("");
     }
-    payload = { message: msg.message, uuid: msg.uuid, content: text };
+    payload = {
+      message: msg.message, uuid: msg.uuid, content: text,
+      ...(msg.parent_tool_use_id === null || typeof msg.parent_tool_use_id === "string"
+        ? { parent_tool_use_id: msg.parent_tool_use_id } : {}),
+    };
+  } else if (eventType === "system" && typeof msg.subtype === "string" && taskEventTypes.has(msg.subtype)) {
+    // Task titles already arrive with the Agent tool use. Additional SDK
+    // fields can contain the full prompt, summaries and output paths.
+    payload = {
+      uuid: msg.uuid,
+      subtype: msg.subtype,
+      ...(typeof msg.task_id === "string" ? { task_id: msg.task_id } : {}),
+      ...(typeof msg.task_type === "string" ? { task_type: msg.task_type === "local_agent" ? "local_agent" : "other" } : {}),
+      ...(typeof msg.tool_use_id === "string" ? { tool_use_id: msg.tool_use_id } : {}),
+      ...(typeof msg.status === "string" && terminalTaskStates.has(msg.status) ? { status: msg.status } : {}),
+    };
   } else if (eventType === "user" || eventType === "system") {
+    const resultStatus = (msg.tool_use_result as { status?: unknown } | null)?.status;
     payload = {
       message: msg.message,
       uuid: msg.uuid,
+      ...(eventType === "user" && typeof resultStatus === "string" && agentResultStates.has(resultStatus)
+        ? { tool_use_result: { status: resultStatus } } : {}),
       ...(typeof msg.isSynthetic === "boolean" ? { isSynthetic: msg.isSynthetic } : {}),
     };
   } else if (eventType === "control_request") {

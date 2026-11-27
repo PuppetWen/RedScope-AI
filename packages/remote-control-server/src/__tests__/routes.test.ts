@@ -757,6 +757,28 @@ describe("Web Session Routes", () => {
     expect(body.events).toEqual([]);
   });
 
+  test("web event stream bridges an empty history and prefers the reconnect cursor", async () => {
+    const session = storeCreateSession({});
+    storeBindSession(session.id, "user-1");
+    const path = `/web/sessions/${session.id}/events?uuid=user-1&after=0`;
+    publishSessionEvent(session.id, "system", { subtype: "task_started" }, "inbound");
+    publishSessionEvent(session.id, "system", { subtype: "task_notification" }, "inbound");
+
+    for (const cursor of [undefined, "1"]) {
+      const controller = new AbortController();
+      try {
+        const res = await app.request(path, {
+          signal: controller.signal,
+          headers: cursor ? { "Last-Event-ID": cursor } : {},
+        });
+        const first = await res.body!.getReader().read();
+        expect(new TextDecoder().decode(first.value)).toContain(`id: ${cursor ? 2 : 1}\n`);
+      } finally {
+        controller.abort();
+      }
+    }
+  });
+
   test("GET /web/sessions/:id/history — returns task_state snapshots", async () => {
     const createRes = await app.request("/web/sessions?uuid=user-1", {
       method: "POST",

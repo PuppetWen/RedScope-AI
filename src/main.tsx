@@ -178,6 +178,7 @@ import {
   isCustomAgent,
   parseAgentsFromJson,
 } from '@redscope-ai/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+import { findAgentByType } from '@redscope-ai/builtin-tools/tools/AgentTool/agentTypeNames.js';
 import type { LogOption } from './types/logs.js';
 import type { Message as MessageType } from './types/message.js';
 import {
@@ -2554,7 +2555,7 @@ async function run(): Promise<CommanderCommand> {
       const agentSetting = agentCli ?? getInitialSettings().agent;
       let mainThreadAgentDefinition: (typeof agentDefinitions.activeAgents)[number] | undefined;
       if (agentSetting) {
-        mainThreadAgentDefinition = agentDefinitions.activeAgents.find(agent => agent.agentType === agentSetting);
+        mainThreadAgentDefinition = findAgentByType(agentDefinitions.activeAgents, agentSetting);
         if (!mainThreadAgentDefinition) {
           logForDebugging(
             `Warning: agent "${agentSetting}" not found. ` +
@@ -2660,7 +2661,7 @@ async function run(): Promise<CommanderCommand> {
         storedTeammateOpts?.agentType
       ) {
         // Look up the custom agent definition
-        const customAgent = agentDefinitions.activeAgents.find(a => a.agentType === storedTeammateOpts.agentType);
+        const customAgent = findAgentByType(agentDefinitions.activeAgents, storedTeammateOpts.agentType);
         if (customAgent) {
           // Get the prompt - need to handle both built-in and custom agents
           let customPrompt: string | undefined;

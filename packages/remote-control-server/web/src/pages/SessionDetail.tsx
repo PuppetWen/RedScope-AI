@@ -8,6 +8,7 @@ import type { Session, SessionEvent } from "../types";
 import { isClosedSessionStatus, formatTime, cn } from "../lib/utils";
 import { Info } from "lucide-react";
 import { RCSChatAdapter } from "../lib/rcs-chat-adapter";
+import type { ReviewTaskNode } from "../lib/review-task-tree";
 import type { ThreadEntry, PendingPermission } from "../lib/types";
 import { StatusBadge } from "../components/Navbar";
 import { TaskPanel } from "../components/TaskPanel";
@@ -36,6 +37,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [taskPanelOpen, setTaskPanelOpen] = useState(false);
+  const [taskNodes, setTaskNodes] = useState<ReviewTaskNode[]>([]);
   const [showMeta, setShowMeta] = useState(false);
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +48,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
   const adapter = useMemo(
     () =>
       new RCSChatAdapter(sessionId, setEntries, {
+        onTasksChange: setTaskNodes,
         onStatusChange: (status) => {
           setSessionStatus(status);
         },
@@ -76,8 +79,9 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     async function load() {
       setError("");
 
+      let sess: Session;
       try {
-        const sess = await apiFetchSession(sessionId);
+        sess = await apiFetchSession(sessionId);
         if (cancelled) return;
         setSession(sess);
         setSessionStatus(sess.status);
@@ -88,9 +92,11 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
       }
 
       try {
-        await adapter.init();
+        if (sess.source !== "acp" || !sess.environment_id) {
+          await adapter.init(isClosedSessionStatus(sess.status));
+        }
       } catch (err) {
-        console.warn("Failed to init adapter:", err);
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load session history");
       }
     }
 
@@ -282,7 +288,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                   onClick={() => setTaskPanelOpen(!taskPanelOpen)}
                   className="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
                 >
-                  Tasks
+                  审阅任务{taskNodes.length > 0 ? ` · ${taskNodes.length}` : ""}
                 </button>
               </div>
             </div>
@@ -333,7 +339,14 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         />
 
         {/* Task Panel */}
-        {taskPanelOpen && <TaskPanel onClose={() => setTaskPanelOpen(false)} />}
+        {taskPanelOpen && (
+          <TaskPanel
+            nodes={taskNodes}
+            sessionTitle={session.title || session.id}
+            closed={closed}
+            onClose={() => setTaskPanelOpen(false)}
+          />
+        )}
       </div>
     </TooltipProvider>
   );

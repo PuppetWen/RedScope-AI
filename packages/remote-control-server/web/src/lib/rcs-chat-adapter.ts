@@ -1,6 +1,5 @@
 import type { SetStateAction } from "react";
 import {
-  apiFetchSession,
   apiFetchSessionHistory,
   apiBind,
   apiSendEvent,
@@ -8,7 +7,8 @@ import {
   apiInterrupt,
   getUuid,
 } from "../api/client";
-import { generateMessageUuid } from "./utils";
+import { generateMessageUuid, isClosedSessionStatus } from "./utils";
+import { ReviewTaskLedger, type ReviewTaskNode } from "./review-task-tree";
 import type { SessionEvent, EventPayload } from "../types";
 import type {
   ThreadEntry,
@@ -20,48 +20,6 @@ import type {
   UserMessageImage,
   PendingPermission,
 } from "./types";
-
-// SSE Event Bus — 复用自 rcs-transport.ts，仅保留连接管理
-type SSEEventHandler = (event: SessionEvent) => void;
-
-class SSEBus {
-  private listeners: Set<SSEEventHandler> = new Set();
-  private eventSource: EventSource | null = null;
-
-  onEvent(handler: SSEEventHandler): () => void {
-    this.listeners.add(handler);
-    return () => this.listeners.delete(handler);
-  }
-
-  connect(sessionId: string): void {
-    this.disconnect();
-    const uuid = getUuid();
-    const url = `/web/sessions/${sessionId}/events?uuid=${encodeURIComponent(uuid)}`;
-    const es = new EventSource(url);
-    this.eventSource = es;
-
-    es.addEventListener("message", (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data) as SessionEvent;
-        for (const handler of this.listeners) {
-          handler(data);
-        }
-      } catch {
-        // ignore parse errors
-      }
-    });
-  }
-
-  disconnect(): void {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-  }
-}
-
-// 全局 SSE bus 实例
-export const sseBus = new SSEBus();
 
 // =============================================================================
 // RCS Chat Adapter — 将 SSE 事件转为 ThreadEntry
@@ -101,7 +59,10 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
 export class RCSChatAdapter {
   private sessionId: string;
   private setEntries: React.Dispatch<SetStateAction<ThreadEntry[]>>;
-  private unsub: (() => void) | null = null;
+  private eventSource: EventSource | null = null;
+  private generation = 0;
+  private ledger = new ReviewTaskLedger();
+  private onTasksChange?: (nodes: ReviewTaskNode[]) => void;
   private onStatusChange?: (status: string) => void;
   private onError?: (error: string) => void;
   private onPermissionRequest?: (permission: PendingPermission) => void;
@@ -113,6 +74,7 @@ export class RCSChatAdapter {
       onStatusChange?: (status: string) => void;
       onError?: (error: string) => void;
       onPermissionRequest?: (permission: PendingPermission) => void;
+      onTasksChange?: (nodes: ReviewTaskNode[]) => void;
     },
   ) {
     this.sessionId = sessionId;
@@ -120,27 +82,36 @@ export class RCSChatAdapter {
     this.onStatusChange = options?.onStatusChange;
     this.onError = options?.onError;
     this.onPermissionRequest = options?.onPermissionRequest;
+    this.onTasksChange = options?.onTasksChange;
   }
 
   /** 初始化：绑定会话、加载历史、连接 SSE */
-  async init(): Promise<void> {
+  async init(closed = false): Promise<void> {
+    this.disconnect();
+    const generation = this.generation;
     try {
       await apiBind(this.sessionId);
     } catch {
       // may already be bound
     }
 
-    await this.loadHistory();
-    this.connectSSE();
+    if (this.generation !== generation) return;
+    const { events } = await apiFetchSessionHistory(this.sessionId);
+    if (this.generation !== generation) return;
+    this.ledger = new ReviewTaskLedger();
+    const status = this.loadHistory(events);
+    this.onTasksChange?.(this.ledger.snapshot());
+    if (!closed && status) this.onStatusChange?.(status);
+    if (!closed && !isClosedSessionStatus(status)) {
+      this.connectSSE(events[events.length - 1]?.seqNum ?? 0);
+    }
   }
 
   /** 加载历史事件并转为 ThreadEntry */
-  async loadHistory(): Promise<void> {
-    const { events } = await apiFetchSessionHistory(this.sessionId);
-    if (!events || events.length === 0) return;
-
+  private loadHistory(events: SessionEvent[]): string | undefined {
     const historyEntries: ThreadEntry[] = [];
     let currentAssistant: AssistantMessageEntry | null = null;
+    let sessionStatus: string | undefined;
 
     const flushAssistant = () => {
       if (currentAssistant) {
@@ -150,9 +121,12 @@ export class RCSChatAdapter {
     };
 
     for (const event of events) {
+      this.ledger.apply(event);
       const payload = event.payload || ({} as EventPayload);
 
-      if (event.type === "user") {
+      if (event.type === "session_status" && typeof payload.status === "string") {
+        sessionStatus = payload.status;
+      } else if (event.type === "user") {
         if (event.direction === "outbound") continue; // skip echoed user messages
         flushAssistant();
         const text = extractEventText(payload);
@@ -229,25 +203,39 @@ export class RCSChatAdapter {
 
     flushAssistant();
     this.setEntries(historyEntries);
+    return sessionStatus;
   }
 
   /** 连接 SSE 事件流 */
-  connectSSE(): void {
-    sseBus.connect(this.sessionId);
-    this.unsub = sseBus.onEvent((event) => this.handleEvent(event));
+  private connectSSE(after: number): void {
+    const params = new URLSearchParams({ uuid: getUuid(), after: String(after) });
+    const source = new EventSource(`/web/sessions/${encodeURIComponent(this.sessionId)}/events?${params}`);
+    this.eventSource = source;
+    let lastSequence = after;
+    source.onmessage = (message) => {
+      if (this.eventSource !== source) return;
+      let event: SessionEvent;
+      try {
+        event = JSON.parse(message.data) as SessionEvent;
+      } catch {
+        return;
+      }
+      if (typeof event?.seqNum !== "number" || event.seqNum <= lastSequence) return;
+      lastSequence = event.seqNum;
+      this.handleEvent(event);
+    };
   }
 
   /** 断开 SSE */
   disconnect(): void {
-    if (this.unsub) {
-      this.unsub();
-      this.unsub = null;
-    }
-    sseBus.disconnect();
+    this.generation++;
+    this.eventSource?.close();
+    this.eventSource = null;
   }
 
   /** 处理 SSE 事件 */
   handleEvent(event: SessionEvent): void {
+    if (this.ledger.apply(event)) this.onTasksChange?.(this.ledger.snapshot());
     const type = event.type;
     const payload = event.payload || ({} as EventPayload);
 

@@ -45,15 +45,16 @@ export function createSSEWriter(c: Context): SSEWriter {
 }
 
 /** Create SSE response stream for a session */
-export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
+export function createSSEStream(c: Context, sessionId: string, fromSeqNum?: number) {
   const bus = getEventBus(sessionId);
 
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
 
-      // Send historical events if reconnecting
-      if (fromSeqNum > 0) {
+      // A cursor of zero means that the history snapshot was empty. Events
+      // may already have arrived before the browser connected to this stream.
+      if (fromSeqNum !== undefined) {
         const missed = bus.getEventsSince(fromSeqNum);
         for (const event of missed) {
           const data = JSON.stringify({
