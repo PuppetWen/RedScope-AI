@@ -180,6 +180,7 @@ flowchart TD
 
 ## Documentation
 
+- [Agent architecture and interview notes (Chinese)](docs/RedScope%20AI%20Agent%20%E6%9E%B6%E6%9E%84%E4%B8%8E%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0.md)
 - [Usage and configuration guide (Chinese)](docs/usage.md)
 - [Security workflow tools](tools/README.md)
 - [Self-hosted remote control](docs/features/remote-control-self-hosting.md)
