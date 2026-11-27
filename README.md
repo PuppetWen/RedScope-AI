@@ -147,7 +147,6 @@ flowchart TD
 
 ## 文档
 
-- [Agent 架构与面试笔记](docs/RedScope%20AI%20Agent%20%E6%9E%B6%E6%9E%84%E4%B8%8E%E9%9D%A2%E8%AF%95%E7%AC%94%E8%AE%B0.md)
 - [完整使用指南](docs/usage.md)
 - [工具套件与运行目录](tools/README.md)
 - [自托管远程控制](docs/features/remote-control-self-hosting.md)
